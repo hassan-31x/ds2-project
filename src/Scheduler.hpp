@@ -24,6 +24,9 @@ public:
     std::shared_ptr<Schedule> getCurrentSchedule() const;
     std::vector<std::shared_ptr<Schedule>> getAllPossibleSchedules() const;
     
+    // Build a PQ tree for the current schedule (for visualization)
+    PQTree buildSchedulePQTree() const;
+    
     // Clear all data
     void clear();
     
@@ -45,17 +48,17 @@ private:
     // All possible schedules generated
     std::vector<std::shared_ptr<Schedule>> possibleSchedules;
     
-    // PQ tree used for generating schedules
-    PQTree pqTree;
-    
-    // Helper method to convert courses and sections to a PQ tree representation
-    void buildPQTree();
-    
-    // Helper method to create actual schedules from the PQ tree layout
-    void extractSchedulesFromPQTree();
-    
     // Helper method to find a schedule that satisfies all requirements
     bool findSatisfyingSchedule();
+    
+    // Helper methods for generating all possible schedule combinations
+    void generateAllScheduleCombinations(
+        const std::map<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>& permutationsByDay);
+    
+    void generateScheduleRecursive(
+        const std::vector<std::pair<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>>& dayPermList,
+        size_t dayIndex,
+        std::shared_ptr<Schedule> currentSchedule);
 };
 
 #endif // SCHEDULER_HPP 

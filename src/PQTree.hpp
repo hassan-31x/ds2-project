@@ -4,6 +4,8 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <sstream>
+#include "Models.hpp"
 
 enum class NodeType {
     P_NODE,  // Children can be reordered in any way
@@ -52,6 +54,15 @@ public:
     std::shared_ptr<PQNode> createPNode(const std::string& label = "");
     std::shared_ptr<PQNode> createQNode(const std::string& label = "");
     
+    // Build a time-ordered tree from sections
+    void buildTimeOrderedTree(const std::vector<std::shared_ptr<Section>>& sections);
+    
+    // Print the tree structure
+    std::string print() const;
+    
+    // Get all valid frontier permutations
+    std::vector<std::vector<std::string>> getFrontiers() const;
+    
     // PQ Tree operations
     bool reduce(const std::vector<std::string>& subset);
     void reorder();
@@ -61,6 +72,12 @@ public:
     
 private:
     std::shared_ptr<PQNode> root;
+    
+    // Helper methods
+    void printTree(std::shared_ptr<PQNode> node, int depth, std::stringstream& ss) const;
+    void generatePermutations(std::shared_ptr<PQNode> node, 
+                             std::vector<std::vector<std::string>>& permutations, 
+                             std::vector<std::string> current) const;
 };
 
 #endif // PQTREE_HPP 

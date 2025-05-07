@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <sstream>
 #include <iostream>
+#include <cstring>  // For strcpy and strlen
+#include <cstdio>   // For sprintf
 
 // UIComponent implementation
 UIComponent::UIComponent(int x, int y, int width, int height)
@@ -294,6 +296,9 @@ void UI::initialize() {
     InitWindow(screenWidth, screenHeight, windowTitle);
     SetTargetFPS(60);
     
+    // Add dummy data
+    addDummyData();
+    
     // Create the initial screen
     changeScreen(ScreenState::MAIN_MENU);
     
@@ -330,28 +335,28 @@ void UI::changeScreen(ScreenState newState) {
 std::unique_ptr<Screen> UI::createScreen(ScreenState state) {
     switch (state) {
         case ScreenState::MAIN_MENU:
-            return std::make_unique<MainMenuScreen>(scheduler);
+            return std::unique_ptr<Screen>(new MainMenuScreen(scheduler));
         
         case ScreenState::COURSE_MANAGEMENT:
-            return std::make_unique<CourseManagementScreen>(scheduler);
+            return std::unique_ptr<Screen>(new CourseManagementScreen(scheduler));
             
         case ScreenState::TEACHER_MANAGEMENT:
-            return std::make_unique<TeacherManagementScreen>(scheduler);
+            return std::unique_ptr<Screen>(new TeacherManagementScreen(scheduler));
             
         case ScreenState::SECTION_MANAGEMENT:
-            return std::make_unique<SectionManagementScreen>(scheduler);
+            return std::unique_ptr<Screen>(new SectionManagementScreen(scheduler));
             
         case ScreenState::REQUIREMENT_MANAGEMENT:
-            return std::make_unique<RequirementManagementScreen>(scheduler);
+            return std::unique_ptr<Screen>(new RequirementManagementScreen(scheduler));
             
         case ScreenState::SCHEDULE_VIEWER:
-            return std::make_unique<ScheduleViewerScreen>(scheduler);
+            return std::unique_ptr<Screen>(new ScheduleViewerScreen(scheduler));
             
         case ScreenState::PQ_TREE_VIEWER:
-            return std::make_unique<PQTreeViewerScreen>(scheduler);
+            return std::unique_ptr<Screen>(new PQTreeViewerScreen(scheduler));
             
         default:
-            return std::make_unique<MainMenuScreen>(scheduler);
+            return std::unique_ptr<Screen>(new MainMenuScreen(scheduler));
     }
 }
 
@@ -368,60 +373,60 @@ void MainMenuScreen::initialize() {
     int centerX = GetScreenWidth() / 2 - buttonWidth / 2;
     
     // Button for course management
-    auto courseButton = std::make_unique<Button>(
+    auto courseButton = std::unique_ptr<Button>(new Button(
         centerX, startY, buttonWidth, buttonHeight, 
         "Manage Courses", BLUE
-    );
+    ));
     courseButton->setOnClick([]() {
         // Will switch to course management screen in processInput
     });
     components.push_back(std::move(courseButton));
     
     // Button for teacher management
-    auto teacherButton = std::make_unique<Button>(
+    auto teacherButton = std::unique_ptr<Button>(new Button(
         centerX, startY + buttonHeight + buttonSpacing, 
         buttonWidth, buttonHeight, "Manage Teachers", BLUE
-    );
+    ));
     teacherButton->setOnClick([]() {
         // Will switch to teacher management screen in processInput
     });
     components.push_back(std::move(teacherButton));
     
     // Button for section management
-    auto sectionButton = std::make_unique<Button>(
+    auto sectionButton = std::unique_ptr<Button>(new Button(
         centerX, startY + 2 * (buttonHeight + buttonSpacing), 
         buttonWidth, buttonHeight, "Manage Sections", BLUE
-    );
+    ));
     sectionButton->setOnClick([]() {
         // Will switch to section management screen in processInput
     });
     components.push_back(std::move(sectionButton));
     
     // Button for requirement management
-    auto requirementButton = std::make_unique<Button>(
+    auto requirementButton = std::unique_ptr<Button>(new Button(
         centerX, startY + 3 * (buttonHeight + buttonSpacing), 
         buttonWidth, buttonHeight, "Manage Requirements", BLUE
-    );
+    ));
     requirementButton->setOnClick([]() {
         // Will switch to requirement management screen in processInput
     });
     components.push_back(std::move(requirementButton));
     
     // Button for schedule viewer
-    auto scheduleButton = std::make_unique<Button>(
+    auto scheduleButton = std::unique_ptr<Button>(new Button(
         centerX, startY + 4 * (buttonHeight + buttonSpacing), 
         buttonWidth, buttonHeight, "View Schedules", GREEN
-    );
+    ));
     scheduleButton->setOnClick([]() {
         // Will switch to schedule viewer screen in processInput
     });
     components.push_back(std::move(scheduleButton));
     
     // Button for PQ tree viewer
-    auto pqTreeButton = std::make_unique<Button>(
+    auto pqTreeButton = std::unique_ptr<Button>(new Button(
         centerX, startY + 5 * (buttonHeight + buttonSpacing), 
         buttonWidth, buttonHeight, "View PQ Tree", PURPLE
-    );
+    ));
     pqTreeButton->setOnClick([]() {
         // Will switch to PQ tree viewer screen in processInput
     });
@@ -491,9 +496,9 @@ void CourseManagementScreen::initialize() {
     // Create UI components
     
     // Back button
-    auto backButton = std::make_unique<Button>(
+    auto backButton = std::unique_ptr<Button>(new Button(
         20, 20, 100, 40, "Back", GRAY
-    );
+    ));
     backButton->setOnClick([]() {
         // Will return to main menu in processInput
     });
@@ -519,9 +524,9 @@ void CourseManagementScreen::initialize() {
     components.push_back(std::unique_ptr<UIComponent>(creditsInput));
     
     // Add button
-    auto addButton = std::make_unique<Button>(
+    auto addButton = std::unique_ptr<Button>(new Button(
         inputX, inputY + 3 * spacing, inputWidth, inputHeight, "Add Course", GREEN
-    );
+    ));
     addButton->setOnClick([this]() {
         addCourse();
     });
@@ -639,9 +644,9 @@ TeacherManagementScreen::TeacherManagementScreen(std::shared_ptr<Scheduler> sche
 
 void TeacherManagementScreen::initialize() {
     // Create a back button
-    auto backButton = std::make_unique<Button>(
+    auto backButton = std::unique_ptr<Button>(new Button(
         20, 20, 100, 40, "Back", GRAY
-    );
+    ));
     backButton->setOnClick([]() {
         // Will return to main menu in processInput
     });
@@ -663,9 +668,9 @@ void TeacherManagementScreen::initialize() {
     components.push_back(std::unique_ptr<UIComponent>(nameInput));
     
     // Add button
-    auto addButton = std::make_unique<Button>(
+    auto addButton = std::unique_ptr<Button>(new Button(
         inputX, inputY + 2 * spacing, inputWidth, inputHeight, "Add Teacher", GREEN
-    );
+    ));
     addButton->setOnClick([this]() {
         addTeacher();
     });
@@ -685,9 +690,9 @@ void TeacherManagementScreen::initialize() {
     components.push_back(std::unique_ptr<UIComponent>(courseDropdown));
     
     // Assign course button
-    auto assignButton = std::make_unique<Button>(
+    auto assignButton = std::unique_ptr<Button>(new Button(
         inputX, inputY + 4 * spacing, inputWidth, inputHeight, "Assign Course", BLUE
-    );
+    ));
     assignButton->setOnClick([this]() {
         assignCourseToTeacher();
     });
@@ -864,9 +869,9 @@ SectionManagementScreen::SectionManagementScreen(std::shared_ptr<Scheduler> sche
 
 void SectionManagementScreen::initialize() {
     // Create a back button
-    auto backButton = std::make_unique<Button>(
+    auto backButton = std::unique_ptr<Button>(new Button(
         20, 20, 100, 40, "Back", GRAY
-    );
+    ));
     backButton->setOnClick([]() {
         // Will return to main menu in processInput
     });
@@ -878,7 +883,6 @@ void SectionManagementScreen::initialize() {
     int inputX = 150;
     int inputY = 100;
     int spacing = 50;
-    int labelX = 30;
     
     // Section ID input
     idInput = new TextInput(inputX, inputY, inputWidth, inputHeight, "Section ID");
@@ -924,9 +928,9 @@ void SectionManagementScreen::initialize() {
     components.push_back(std::unique_ptr<UIComponent>(durationInput));
     
     // Add section button
-    auto addButton = std::make_unique<Button>(
+    auto addButton = std::unique_ptr<Button>(new Button(
         inputX, inputY + 6 * spacing, inputWidth, inputHeight, "Add Section", GREEN
-    );
+    ));
     addButton->setOnClick([this]() {
         addSection();
     });
@@ -1153,9 +1157,9 @@ RequirementManagementScreen::RequirementManagementScreen(std::shared_ptr<Schedul
 
 void RequirementManagementScreen::initialize() {
     // Create a back button
-    auto backButton = std::make_unique<Button>(
+    auto backButton = std::unique_ptr<Button>(new Button(
         20, 20, 100, 40, "Back", GRAY
-    );
+    ));
     backButton->setOnClick([]() {
         // Will return to main menu in processInput
     });
@@ -1214,9 +1218,9 @@ void RequirementManagementScreen::initialize() {
     components.push_back(std::unique_ptr<UIComponent>(durationInput));
     
     // Add requirement button
-    auto addButton = std::make_unique<Button>(
+    auto addButton = std::unique_ptr<Button>(new Button(
         inputX, inputY + 6 * spacing, inputWidth, inputHeight, "Add Requirement", GREEN
-    );
+    ));
     addButton->setOnClick([this]() {
         addRequirement();
     });
@@ -1437,27 +1441,27 @@ ScheduleViewerScreen::ScheduleViewerScreen(std::shared_ptr<Scheduler> scheduler)
 
 void ScheduleViewerScreen::initialize() {
     // Create a back button
-    auto backButton = std::make_unique<Button>(
+    auto backButton = std::unique_ptr<Button>(new Button(
         20, 20, 100, 40, "Back", GRAY
-    );
+    ));
     backButton->setOnClick([]() {
         // Will return to main menu in processInput
     });
     components.push_back(std::move(backButton));
     
     // Create a generate button
-    auto generateButton = std::make_unique<Button>(
+    auto generateButton = std::unique_ptr<Button>(new Button(
         140, 20, 150, 40, "Generate", GREEN
-    );
+    ));
     generateButton->setOnClick([this]() {
         generateSchedules();
     });
     components.push_back(std::move(generateButton));
     
     // Add navigation buttons for multiple schedules
-    auto prevButton = std::make_unique<Button>(
+    auto prevButton = std::unique_ptr<Button>(new Button(
         300, 20, 120, 40, "Previous", BLUE
-    );
+    ));
     prevButton->setOnClick([this]() {
         if (!displayedSchedules.empty() && currentScheduleIndex > 0) {
             currentScheduleIndex--;
@@ -1465,15 +1469,24 @@ void ScheduleViewerScreen::initialize() {
     });
     components.push_back(std::move(prevButton));
     
-    auto nextButton = std::make_unique<Button>(
+    auto nextButton = std::unique_ptr<Button>(new Button(
         430, 20, 120, 40, "Next", BLUE
-    );
+    ));
     nextButton->setOnClick([this]() {
-        if (!displayedSchedules.empty() && currentScheduleIndex < displayedSchedules.size() - 1) {
+        if (!displayedSchedules.empty() && currentScheduleIndex < static_cast<int>(displayedSchedules.size()) - 1) {
             currentScheduleIndex++;
         }
     });
     components.push_back(std::move(nextButton));
+    
+    // Add a View PQ Tree button
+    auto viewPQTreeButton = std::unique_ptr<Button>(new Button(
+        560, 20, 150, 40, "View PQ Tree", PURPLE
+    ));
+    viewPQTreeButton->setOnClick([]() {
+        // Will show PQ tree in processInput
+    });
+    components.push_back(std::move(viewPQTreeButton));
 }
 
 void ScheduleViewerScreen::update() {
@@ -1504,6 +1517,10 @@ ScreenState ScheduleViewerScreen::processInput() {
             if (i == 0) {
                 return ScreenState::MAIN_MENU;
             }
+            // If the View PQ Tree button was clicked
+            else if (i == 4 && !displayedSchedules.empty()) {
+                return ScreenState::PQ_TREE_VIEWER;
+            }
         }
     }
     return ScreenState::SCHEDULE_VIEWER;
@@ -1517,7 +1534,7 @@ void ScheduleViewerScreen::generateSchedules() {
 }
 
 void ScheduleViewerScreen::drawScheduleGrid() {
-    if (displayedSchedules.empty() || currentScheduleIndex >= displayedSchedules.size()) {
+    if (displayedSchedules.empty() || currentScheduleIndex >= static_cast<int>(displayedSchedules.size())) {
         return;
     }
     
@@ -1633,8 +1650,8 @@ void ScheduleViewerScreen::drawScheduleGrid() {
         int startHour12 = startHour > 12 ? startHour - 12 : (startHour == 0 ? 12 : startHour);
         int endHour12 = endHour > 12 ? endHour - 12 : (endHour == 0 ? 12 : endHour);
         
-        sprintf(startTimeStr, "%d:%02dAM", startHour12, startMin);
-        sprintf(endTimeStr, "%d:%02dAM", endHour12, endMin);
+        snprintf(startTimeStr, sizeof(startTimeStr), "%d:%02dAM", startHour12, startMin);
+        snprintf(endTimeStr, sizeof(endTimeStr), "%d:%02dAM", endHour12, endMin);
         
         if (startPM) strcpy(&startTimeStr[strlen(startTimeStr)-2], "PM");
         if (endPM) strcpy(&endTimeStr[strlen(endTimeStr)-2], "PM");
@@ -1673,17 +1690,68 @@ PQTreeViewerScreen::PQTreeViewerScreen(std::shared_ptr<Scheduler> scheduler)
 
 void PQTreeViewerScreen::initialize() {
     // Create a back button
-    auto backButton = std::make_unique<Button>(
+    auto backButton = std::unique_ptr<Button>(new Button(
         20, 20, 100, 40, "Back", GRAY
-    );
+    ));
     backButton->setOnClick([]() {
-        // Will return to main menu in processInput
+        // Will return to schedule viewer in processInput
     });
     components.push_back(std::move(backButton));
+    
+    // Create zoom controls
+    auto zoomInButton = std::unique_ptr<Button>(new Button(
+        130, 20, 40, 40, "+", BLUE
+    ));
+    zoomInButton->setOnClick([this]() {
+        zoomLevel *= 1.2f;
+    });
+    components.push_back(std::move(zoomInButton));
+    
+    auto zoomOutButton = std::unique_ptr<Button>(new Button(
+        180, 20, 40, 40, "-", BLUE
+    ));
+    zoomOutButton->setOnClick([this]() {
+        zoomLevel /= 1.2f;
+        if (zoomLevel < 0.2f) zoomLevel = 0.2f;
+    });
+    components.push_back(std::move(zoomOutButton));
 }
 
 void PQTreeViewerScreen::update() {
-    // Nothing to update continuously
+    // Handle panning with mouse drag
+    if (IsMouseButtonDown(MOUSE_LEFT_BUTTON)) {
+        Vector2 mousePos = GetMousePosition();
+        
+        // Check if not over UI components
+        bool overComponent = false;
+        for (const auto& component : components) {
+            if (component->isMouseOver()) {
+                overComponent = true;
+                break;
+            }
+        }
+        
+        if (!overComponent) {
+            if (!dragging) {
+                lastMousePos = mousePos;
+                dragging = true;
+            } else {
+                panOffset.x += (mousePos.x - lastMousePos.x);
+                panOffset.y += (mousePos.y - lastMousePos.y);
+                lastMousePos = mousePos;
+            }
+        }
+    } else {
+        dragging = false;
+    }
+    
+    // Handle zooming with mouse wheel
+    float wheel = GetMouseWheelMove();
+    if (wheel != 0) {
+        zoomLevel *= (1.0f + wheel * 0.1f);
+        if (zoomLevel < 0.2f) zoomLevel = 0.2f;
+        if (zoomLevel > 5.0f) zoomLevel = 5.0f;
+    }
 }
 
 void PQTreeViewerScreen::draw() {
@@ -1694,11 +1762,19 @@ void PQTreeViewerScreen::draw() {
         component->draw();
     }
     
-    // Draw placeholder text
-    DrawText("PQ Tree Visualization - Not Yet Implemented", 200, 300, 20, GRAY);
+    // Get the PQ tree from the scheduler
+    PQTree pqTree = scheduler->buildSchedulePQTree();
     
-    // Basic instructions
-    DrawText("This screen will visualize the PQ Tree used for scheduling.", 200, 340, 18, DARKGRAY);
+    if (pqTree.getRoot()) {
+        // Draw the PQ tree
+        drawPQTree();
+    } else {
+        // Draw placeholder text
+        DrawText("No PQ Tree available. Generate a schedule first.", 200, 300, 20, GRAY);
+    }
+    
+    // Draw zoom level
+    DrawText(("Zoom: " + std::to_string(zoomLevel)).c_str(), 230, 30, 20, BLACK);
 }
 
 ScreenState PQTreeViewerScreen::processInput() {
@@ -1707,7 +1783,7 @@ ScreenState PQTreeViewerScreen::processInput() {
         if (components[i]->handleInput()) {
             // If the back button was clicked
             if (i == 0) {
-                return ScreenState::MAIN_MENU;
+                return ScreenState::SCHEDULE_VIEWER;
             }
         }
     }
@@ -1715,12 +1791,170 @@ ScreenState PQTreeViewerScreen::processInput() {
 }
 
 void PQTreeViewerScreen::drawPQTree() {
-    // Not implemented yet
+    // Get the PQ tree from the scheduler
+    PQTree pqTree = scheduler->buildSchedulePQTree();
+    auto root = pqTree.getRoot();
+    
+    if (!root) return;
+    
+    // Set the center position for the root
+    Vector2 rootPos = {
+        GetScreenWidth() / 2.0f + panOffset.x,
+        150.0f + panOffset.y
+    };
+    
+    // Draw the tree starting from the root
+    drawNode(root, rootPos, zoomLevel);
 }
 
 void PQTreeViewerScreen::drawNode(std::shared_ptr<PQNode> node, Vector2 position, float scale) {
-    // Not implemented yet
-    (void)node;
-    (void)position;
-    (void)scale;
+    if (!node) return;
+    
+    // Different colors for different node types
+    Color nodeColor;
+    float radius = 30.0f * scale;
+    
+    switch (node->getType()) {
+        case NodeType::P_NODE:
+            nodeColor = RED;
+            break;
+        case NodeType::Q_NODE:
+            nodeColor = BLUE;
+            break;
+        case NodeType::LEAF:
+            nodeColor = GREEN;
+            break;
+    }
+    
+    // Draw the node
+    DrawCircle(position.x, position.y, radius, nodeColor);
+    DrawCircleLines(position.x, position.y, radius, BLACK);
+    
+    // Draw the node type or label
+    std::string label;
+    if (node->getType() == NodeType::LEAF) {
+        label = node->getLabel();
+        
+        // Shorten if too long
+        if (label.length() > 15) {
+            label = label.substr(0, 12) + "...";
+        }
+    } else {
+        label = (node->getType() == NodeType::P_NODE) ? "P" : "Q";
+        if (!node->getLabel().empty()) {
+            label += ": " + node->getLabel();
+        }
+    }
+    
+    // Draw the label
+    int fontSize = static_cast<int>(14 * scale);
+    fontSize = std::max(fontSize, 10); // Ensure minimum readable size
+    
+    // Measure text width for centering
+    float textWidth = MeasureText(label.c_str(), fontSize);
+    Vector2 textPos = {
+        position.x - textWidth / 2,
+        position.y - fontSize / 2
+    };
+    
+    DrawText(label.c_str(), textPos.x, textPos.y, fontSize, BLACK);
+    
+    // Draw connections to children
+    const auto& children = node->getChildren();
+    if (children.empty()) return;
+    
+    // Calculate layout for children
+    float childSpacing = 100.0f * scale;
+    float totalWidth = (children.size() - 1) * childSpacing;
+    float startX = position.x - totalWidth / 2;
+    float childY = position.y + 80.0f * scale;
+    
+    // Draw each child
+    for (size_t i = 0; i < children.size(); i++) {
+        float childX = startX + i * childSpacing;
+        Vector2 childPos = {childX, childY};
+        
+        // Draw line to child
+        DrawLine(position.x, position.y + radius, childPos.x, childPos.y - radius * 0.9f, BLACK);
+        
+        // Recursively draw the child node
+        drawNode(children[i], childPos, scale);
+    }
+}
+
+// New method to add dummy data
+void UI::addDummyData() {
+    // Create some courses
+    auto mathCourse = std::make_shared<Course>("MATH101", "Introduction to Calculus", 4);
+    auto csCourse = std::make_shared<Course>("CS101", "Introduction to Programming", 3);
+    auto engCourse = std::make_shared<Course>("ENG101", "Academic Writing", 3);
+    auto physicsCourse = std::make_shared<Course>("PHYS101", "Mechanics", 4);
+    auto statsCourse = std::make_shared<Course>("STAT201", "Statistics", 3);
+    
+    scheduler->addCourse(mathCourse);
+    scheduler->addCourse(csCourse);
+    scheduler->addCourse(engCourse);
+    scheduler->addCourse(physicsCourse);
+    scheduler->addCourse(statsCourse);
+    
+    // Create some teachers
+    auto maria = std::make_shared<Teacher>("T001", "Maria Khan");
+    auto qasim = std::make_shared<Teacher>("T002", "Qasim Ahmed");
+    auto salman = std::make_shared<Teacher>("T003", "Salman Siddiqui");
+    auto hamna = std::make_shared<Teacher>("T004", "Hamna Syed");
+    auto sara = std::make_shared<Teacher>("T005", "Sara Ali");
+    
+    scheduler->addTeacher(maria);
+    scheduler->addTeacher(qasim);
+    scheduler->addTeacher(salman);
+    scheduler->addTeacher(hamna);
+    scheduler->addTeacher(sara);
+    
+    // Create sections with different time slots
+    
+    // Math sections
+    auto mathTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 8, 0, 90);
+    auto mathSection1 = std::make_shared<Section>("M101-A", mathCourse, maria, mathTimeSlot1);
+    
+    auto mathTimeSlot2 = std::make_shared<TimeSlot>(TimeSlot::TUESDAY, 9, 0, 90);
+    auto mathSection2 = std::make_shared<Section>("M101-B", mathCourse, qasim, mathTimeSlot2);
+    
+    // CS sections
+    auto csTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 11, 0, 90);
+    auto csSection1 = std::make_shared<Section>("CS101-A", csCourse, salman, csTimeSlot1);
+    
+    auto csTimeSlot2 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 13, 0, 90);
+    auto csSection2 = std::make_shared<Section>("CS101-B", csCourse, maria, csTimeSlot2);
+    
+    // English sections
+    auto engTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::TUESDAY, 8, 0, 90);
+    auto engSection1 = std::make_shared<Section>("ENG101-A", engCourse, hamna, engTimeSlot1);
+    
+    auto engTimeSlot2 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 14, 0, 90);
+    auto engSection2 = std::make_shared<Section>("ENG101-B", engCourse, sara, engTimeSlot2);
+    
+    // Physics sections
+    auto physTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::WEDNESDAY, 10, 0, 90);
+    auto physSection1 = std::make_shared<Section>("PHYS101-A", physicsCourse, qasim, physTimeSlot1);
+    
+    // Stats sections
+    auto statsTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::THURSDAY, 13, 0, 90);
+    auto statsSection1 = std::make_shared<Section>("STAT201-A", statsCourse, salman, statsTimeSlot1);
+    
+    // Add all sections to the scheduler
+    scheduler->addSection(mathSection1);
+    scheduler->addSection(mathSection2);
+    scheduler->addSection(csSection1);
+    scheduler->addSection(csSection2);
+    scheduler->addSection(engSection1);
+    scheduler->addSection(engSection2);
+    scheduler->addSection(physSection1);
+    scheduler->addSection(statsSection1);
+    
+    // Add some requirements
+    auto mathTeacherReq = std::make_shared<TeacherRequirement>(mathCourse, maria);
+    auto csTimeReq = std::make_shared<TimeSlotRequirement>(csCourse, csTimeSlot1);
+    
+    scheduler->addRequirement(mathTeacherReq);
+    scheduler->addRequirement(csTimeReq);
 } 

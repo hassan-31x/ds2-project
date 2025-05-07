@@ -36,8 +36,14 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
         exit 1
     fi
     
-    # Compile all source files
+    # Compile all source files except sample-pq.cpp (which has a duplicate main function)
     for file in src/*.cpp; do
+        # Skip sample-pq.cpp
+        if [[ "$file" == "src/sample-pq.cpp" ]]; then
+            echo "Skipping $file (contains duplicate main function)"
+            continue
+        fi
+        
         echo "Compiling $file..."
         g++ -c "$file" -o "obj/$(basename "${file%.*}").o" -std=c++17 -Wall -Wextra -I./ -I"$RAYLIB_INCLUDE_PATH"
         
@@ -71,8 +77,14 @@ else
         exit 1
     fi
     
-    # Compile all source files
+    # Compile all source files except sample-pq.cpp (which has a duplicate main function)
     for file in src/*.cpp; do
+        # Skip sample-pq.cpp
+        if [[ "$file" == "src/sample-pq.cpp" ]]; then
+            echo "Skipping $file (contains duplicate main function)"
+            continue
+        fi
+        
         echo "Compiling $file..."
         g++ -c "$file" -o "obj/$(basename "${file%.*}").o" -std=c++17 -Wall -Wextra -I./ -I"$RAYLIB_INCLUDE_PATH"
         
