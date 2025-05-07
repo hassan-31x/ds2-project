@@ -63,6 +63,9 @@ public:
     // Get all valid frontier permutations
     std::vector<std::vector<std::string>> getFrontiers() const;
     
+    // Get all permutations with section indices (for scheduling)
+    void getAllPermutations(std::vector<std::vector<int>>& permutations);
+    
     // PQ Tree operations
     bool reduce(const std::vector<std::string>& subset);
     void reorder();

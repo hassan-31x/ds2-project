@@ -73,9 +73,34 @@ void PQTree::buildTimeOrderedTree(const std::vector<std::shared_ptr<Section>>& s
     std::vector<std::shared_ptr<Section>> sortedSections = sections;
     std::sort(sortedSections.begin(), sortedSections.end(),
         [](const std::shared_ptr<Section>& a, const std::shared_ptr<Section>& b) {
-            return (a->getTimeSlot()->getDay() < b->getTimeSlot()->getDay()) || 
-                   (a->getTimeSlot()->getDay() == b->getTimeSlot()->getDay() && 
-                    a->getTimeSlot()->getStartHour() < b->getTimeSlot()->getStartHour());
+            auto slotA = a->getTimeSlot();
+            auto slotB = b->getTimeSlot();
+            
+            // First, sort by day if both have assigned days
+            if (slotA->hasDay() && slotB->hasDay()) {
+                if (slotA->getDay() != slotB->getDay()) {
+                    return slotA->getDay() < slotB->getDay();
+                }
+            } else if (slotA->hasDay()) {
+                return true; // Sections with assigned days come first
+            } else if (slotB->hasDay()) {
+                return false;
+            }
+            
+            // If both have start times, sort by start time
+            if (slotA->hasStartTime() && slotB->hasStartTime()) {
+                if (slotA->getStartHour() != slotB->getStartHour()) {
+                    return slotA->getStartHour() < slotB->getStartHour();
+                }
+                return slotA->getStartMinute() < slotB->getStartMinute();
+            } else if (slotA->hasStartTime()) {
+                return true; // Sections with assigned start times come first
+            } else if (slotB->hasStartTime()) {
+                return false;
+            }
+            
+            // If neither has day or start time, sort by duration (longer duration first)
+            return slotA->getDurationMinutes() > slotB->getDurationMinutes();
         });
     
     // Create a Q-node as root
@@ -275,5 +300,47 @@ void PQTree::computeLayout() {
             int y = level * LEVEL_HEIGHT;
             nodes[i]->setPosition(x, y);
         }
+    }
+}
+
+// Get all permutations with section indices (for scheduling)
+void PQTree::getAllPermutations(std::vector<std::vector<int>>& permutations) {
+    permutations.clear();
+    
+    // Base case: if tree is empty
+    if (!root) return;
+    
+    // Get all leaf indices in order (left to right)
+    std::vector<int> initialOrder;
+    for (int i = 0; i < root->getChildren().size(); i++) {
+        initialOrder.push_back(i);
+    }
+    
+    // If only one leaf, return it
+    if (initialOrder.size() <= 1) {
+        permutations.push_back(initialOrder);
+        return;
+    }
+    
+    // For P-node, generate all permutations
+    if (root->getType() == NodeType::P_NODE) {
+        do {
+            permutations.push_back(initialOrder);
+        } while (std::next_permutation(initialOrder.begin(), initialOrder.end()));
+    }
+    // For Q-node, only forward and reverse orders
+    else if (root->getType() == NodeType::Q_NODE) {
+        permutations.push_back(initialOrder);
+        
+        // Add reverse order if it's different
+        std::vector<int> reverseOrder = initialOrder;
+        std::reverse(reverseOrder.begin(), reverseOrder.end());
+        if (reverseOrder != initialOrder) {
+            permutations.push_back(reverseOrder);
+        }
+    }
+    // For leaf node, just return the leaf itself
+    else if (root->getType() == NodeType::LEAF) {
+        permutations.push_back(initialOrder);
     }
 } 

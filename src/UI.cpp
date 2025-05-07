@@ -882,7 +882,7 @@ void SectionManagementScreen::initialize() {
     int inputHeight = 40;
     int inputX = 150;
     int inputY = 100;
-    int spacing = 50;
+    int spacing = 60;
     
     // Section ID input
     idInput = new TextInput(inputX, inputY, inputWidth, inputHeight, "Section ID");
@@ -910,26 +910,13 @@ void SectionManagementScreen::initialize() {
     teacherDropdown = new Dropdown(inputX, inputY + 2 * spacing, inputWidth, inputHeight, teacherOptions);
     components.push_back(std::unique_ptr<UIComponent>(teacherDropdown));
     
-    // Day dropdown
-    std::vector<std::string> dayOptions = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"};
-    dayDropdown = new Dropdown(inputX, inputY + 3 * spacing, inputWidth, inputHeight, dayOptions);
-    components.push_back(std::unique_ptr<UIComponent>(dayDropdown));
-    
-    // Start hour input
-    startHourInput = new TextInput(inputX, inputY + 4 * spacing, inputWidth / 2 - 5, inputHeight, "Hour");
-    components.push_back(std::unique_ptr<UIComponent>(startHourInput));
-    
-    // Start minute input
-    startMinuteInput = new TextInput(inputX + inputWidth / 2 + 5, inputY + 4 * spacing, inputWidth / 2 - 5, inputHeight, "Min");
-    components.push_back(std::unique_ptr<UIComponent>(startMinuteInput));
-    
     // Duration input
-    durationInput = new TextInput(inputX, inputY + 5 * spacing, inputWidth, inputHeight, "Duration (min)");
+    durationInput = new TextInput(inputX, inputY + 3 * spacing, inputWidth, inputHeight, "Duration (min)");
     components.push_back(std::unique_ptr<UIComponent>(durationInput));
     
     // Add section button
     auto addButton = std::unique_ptr<Button>(new Button(
-        inputX, inputY + 6 * spacing, inputWidth, inputHeight, "Add Section", GREEN
+        inputX, inputY + 4 * spacing, inputWidth, inputHeight, "Add Section", GREEN
     ));
     addButton->setOnClick([this]() {
         addSection();
@@ -952,9 +939,7 @@ void SectionManagementScreen::draw() {
     DrawText("ID:", 30, 110, 20, BLACK);
     DrawText("Course:", 30, 160, 20, BLACK);
     DrawText("Teacher:", 30, 210, 20, BLACK);
-    DrawText("Day:", 30, 260, 20, BLACK);
-    DrawText("Start Time:", 30, 310, 20, BLACK);
-    DrawText("Duration:", 30, 360, 20, BLACK);
+    DrawText("Duration:", 30, 260, 20, BLACK);
     
     // Draw all UI components
     for (const auto& component : components) {
@@ -995,8 +980,14 @@ void SectionManagementScreen::draw() {
                  detailX, detailY + 30, 20, DARKGRAY);
         DrawText(("Teacher: " + section->getTeacher()->getName()).c_str(), 
                  detailX, detailY + 60, 20, DARKGRAY);
-        DrawText(("Time: " + timeSlot->toString()).c_str(), 
-                 detailX, detailY + 90, 20, DARKGRAY);
+        
+        // Display time information - either just day and duration or full time if scheduled
+        std::string timeInfo = "Time: " + timeSlot->toString();
+        if (!timeSlot->hasStartTime()) {
+            timeInfo += " (Start time will be assigned during scheduling)";
+        }
+        
+        DrawText(timeInfo.c_str(), detailX, detailY + 90, 20, DARKGRAY);
     }
 }
 
@@ -1065,32 +1056,23 @@ void SectionManagementScreen::addSection() {
     std::string id = idInput->getText();
     std::string courseOption = courseDropdown->getSelectedOption();
     std::string teacherOption = teacherDropdown->getSelectedOption();
-    std::string dayOption = dayDropdown->getSelectedOption();
-    std::string startHourStr = startHourInput->getText();
-    std::string startMinuteStr = startMinuteInput->getText();
     std::string durationStr = durationInput->getText();
     
     // Validate input
     if (id.empty() || 
         courseOption == "No courses available" || 
         teacherOption == "No teachers available" ||
-        startHourStr.empty() || 
-        startMinuteStr.empty() || 
         durationStr.empty()) {
         return;
     }
     
-    // Parse time values
-    int startHour, startMinute, duration;
+    // Parse duration value
+    int duration;
     try {
-        startHour = std::stoi(startHourStr);
-        startMinute = std::stoi(startMinuteStr);
         duration = std::stoi(durationStr);
         
-        // Validate time values
-        if (startHour < 0 || startHour > 23 || 
-            startMinute < 0 || startMinute > 59 || 
-            duration <= 0) {
+        // Validate duration value
+        if (duration <= 0) {
             return;
         }
     } catch (const std::exception&) {
@@ -1125,15 +1107,8 @@ void SectionManagementScreen::addSection() {
         return;
     }
     
-    // Create TimeSlot
-    TimeSlot::Day day;
-    if (dayOption == "Monday") day = TimeSlot::MONDAY;
-    else if (dayOption == "Tuesday") day = TimeSlot::TUESDAY;
-    else if (dayOption == "Wednesday") day = TimeSlot::WEDNESDAY;
-    else if (dayOption == "Thursday") day = TimeSlot::THURSDAY;
-    else day = TimeSlot::FRIDAY;
-    
-    auto timeSlot = std::make_shared<TimeSlot>(day, startHour, startMinute, duration);
+    // Create TimeSlot (only with duration - day and start time will be assigned by scheduler)
+    auto timeSlot = std::make_shared<TimeSlot>(duration);
     
     // Create Section
     auto section = std::make_shared<Section>(id, selectedCourse, selectedTeacher, timeSlot);
@@ -1143,8 +1118,6 @@ void SectionManagementScreen::addSection() {
     
     // Clear input fields
     idInput->clear();
-    startHourInput->clear();
-    startMinuteInput->clear();
     durationInput->clear();
     
     // Refresh section list
@@ -1172,54 +1145,35 @@ void RequirementManagementScreen::initialize() {
     int inputY = 100;
     int spacing = 60;
     
-    // Requirement type dropdown
-    std::vector<std::string> requirementTypes = {"Teacher Preference", "TimeSlot Preference"};
-    requirementTypeDropdown = new Dropdown(inputX, inputY, inputWidth, inputHeight, requirementTypes);
-    components.push_back(std::unique_ptr<UIComponent>(requirementTypeDropdown));
+    // Section dropdown
+    std::vector<std::string> sectionOptions;
+    for (const auto& section : scheduler->getSections()) {
+        std::string course = section->getCourse()->getCode();
+        std::string teacher = section->getTeacher()->getName();
+        sectionOptions.push_back(section->getId() + " - " + course + " - " + teacher);
+    }
+    if (sectionOptions.empty()) {
+        sectionOptions.push_back("No sections available");
+    }
+    sectionDropdown = new Dropdown(inputX, inputY, inputWidth, inputHeight, sectionOptions);
+    components.push_back(std::unique_ptr<UIComponent>(sectionDropdown));
     
-    // Course dropdown
-    std::vector<std::string> courseOptions;
-    for (const auto& course : scheduler->getCourses()) {
-        courseOptions.push_back(course->getCode() + " - " + course->getName());
-    }
-    if (courseOptions.empty()) {
-        courseOptions.push_back("No courses available");
-    }
-    courseDropdown = new Dropdown(inputX, inputY + spacing, inputWidth, inputHeight, courseOptions);
-    components.push_back(std::unique_ptr<UIComponent>(courseDropdown));
-    
-    // Teacher dropdown (for Teacher Preference)
-    std::vector<std::string> teacherOptions;
-    for (const auto& teacher : scheduler->getTeachers()) {
-        teacherOptions.push_back(teacher->getId() + " - " + teacher->getName());
-    }
-    if (teacherOptions.empty()) {
-        teacherOptions.push_back("No teachers available");
-    }
-    teacherDropdown = new Dropdown(inputX, inputY + 2 * spacing, inputWidth, inputHeight, teacherOptions);
-    components.push_back(std::unique_ptr<UIComponent>(teacherDropdown));
-    
-    // TimeSlot creator section (for TimeSlot Preference)
     // Day dropdown
     std::vector<std::string> dayOptions = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"};
-    dayDropdown = new Dropdown(inputX, inputY + 3 * spacing, inputWidth, inputHeight, dayOptions);
+    dayDropdown = new Dropdown(inputX, inputY + spacing, inputWidth, inputHeight, dayOptions);
     components.push_back(std::unique_ptr<UIComponent>(dayDropdown));
     
-    // Start hour input
-    startHourInput = new TextInput(inputX, inputY + 4 * spacing, inputWidth / 2 - 5, inputHeight, "Hour");
+    // Start hour input (optional)
+    startHourInput = new TextInput(inputX, inputY + 2 * spacing, inputWidth / 2 - 5, inputHeight, "Hour (optional)");
     components.push_back(std::unique_ptr<UIComponent>(startHourInput));
     
-    // Start minute input
-    startMinuteInput = new TextInput(inputX + inputWidth / 2 + 5, inputY + 4 * spacing, inputWidth / 2 - 5, inputHeight, "Min");
+    // Start minute input (optional)
+    startMinuteInput = new TextInput(inputX + inputWidth / 2 + 5, inputY + 2 * spacing, inputWidth / 2 - 5, inputHeight, "Min (optional)");
     components.push_back(std::unique_ptr<UIComponent>(startMinuteInput));
-    
-    // Duration input
-    durationInput = new TextInput(inputX, inputY + 5 * spacing, inputWidth, inputHeight, "Duration (min)");
-    components.push_back(std::unique_ptr<UIComponent>(durationInput));
     
     // Add requirement button
     auto addButton = std::unique_ptr<Button>(new Button(
-        inputX, inputY + 6 * spacing, inputWidth, inputHeight, "Add Requirement", GREEN
+        inputX, inputY + 3 * spacing, inputWidth, inputHeight, "Add Requirement", GREEN
     ));
     addButton->setOnClick([this]() {
         addRequirement();
@@ -1239,18 +1193,9 @@ void RequirementManagementScreen::draw() {
     DrawText("Requirement Management", 20, 70, 30, DARKBLUE);
     
     // Draw the input field labels
-    DrawText("Type:", 30, 110, 20, BLACK);
-    DrawText("Course:", 30, 170, 20, BLACK);
-    
-    // Show appropriate labels based on requirement type
-    std::string typeOption = requirementTypeDropdown->getSelectedOption();
-    if (typeOption == "Teacher Preference") {
-        DrawText("Teacher:", 30, 230, 20, BLACK);
-    } else { // TimeSlot Preference
-        DrawText("Day:", 30, 230, 20, BLACK);
-        DrawText("Start Time:", 30, 290, 20, BLACK);
-        DrawText("Duration:", 30, 350, 20, BLACK);
-    }
+    DrawText("Section:", 30, 110, 20, BLACK);
+    DrawText("Day:", 30, 170, 20, BLACK);
+    DrawText("Start Time (optional):", 30, 230, 20, BLACK);
     
     // Draw all UI components
     for (const auto& component : components) {
@@ -1311,125 +1256,86 @@ void RequirementManagementScreen::refreshRequirementList() {
 }
 
 void RequirementManagementScreen::refreshDropdowns() {
-    // Refresh course dropdown
-    std::vector<std::string> courseOptions;
-    for (const auto& course : scheduler->getCourses()) {
-        courseOptions.push_back(course->getCode() + " - " + course->getName());
+    // Refresh section dropdown
+    std::vector<std::string> sectionOptions;
+    for (const auto& section : scheduler->getSections()) {
+        std::string course = section->getCourse()->getCode();
+        std::string teacher = section->getTeacher()->getName();
+        sectionOptions.push_back(section->getId() + " - " + course + " - " + teacher);
     }
-    if (courseOptions.empty()) {
-        courseOptions.push_back("No courses available");
+    if (sectionOptions.empty()) {
+        sectionOptions.push_back("No sections available");
     }
-    courseDropdown->setOptions(courseOptions);
-    
-    // Refresh teacher dropdown
-    std::vector<std::string> teacherOptions;
-    for (const auto& teacher : scheduler->getTeachers()) {
-        teacherOptions.push_back(teacher->getId() + " - " + teacher->getName());
-    }
-    if (teacherOptions.empty()) {
-        teacherOptions.push_back("No teachers available");
-    }
-    teacherDropdown->setOptions(teacherOptions);
+    sectionDropdown->setOptions(sectionOptions);
 }
 
 void RequirementManagementScreen::addRequirement() {
-    // Get requirement type
-    std::string requirementType = requirementTypeDropdown->getSelectedOption();
-    
-    // Get course
-    std::string courseOption = courseDropdown->getSelectedOption();
-    if (courseOption == "No courses available") {
+    // Get selected section
+    std::string sectionOption = sectionDropdown->getSelectedOption();
+    if (sectionOption == "No sections available") {
         return;
     }
     
-    // Find the selected course
-    std::string courseCode = courseOption.substr(0, courseOption.find(" - "));
-    std::shared_ptr<Course> selectedCourse;
-    for (const auto& course : scheduler->getCourses()) {
-        if (course->getCode() == courseCode) {
-            selectedCourse = course;
+    // Extract the section ID from the option string
+    std::string sectionId = sectionOption.substr(0, sectionOption.find(" - "));
+    
+    // Find the section with this ID
+    std::shared_ptr<Section> selectedSection;
+    for (const auto& section : scheduler->getSections()) {
+        if (section->getId() == sectionId) {
+            selectedSection = section;
             break;
         }
     }
     
-    if (!selectedCourse) {
+    if (!selectedSection) {
         return;
     }
     
-    // Create appropriate requirement based on type
-    if (requirementType == "Teacher Preference") {
-        // Get teacher
-        std::string teacherOption = teacherDropdown->getSelectedOption();
-        if (teacherOption == "No teachers available") {
-            return;
-        }
-        
-        // Find the selected teacher
-        std::string teacherId = teacherOption.substr(0, teacherOption.find(" - "));
-        std::shared_ptr<Teacher> selectedTeacher;
-        for (const auto& teacher : scheduler->getTeachers()) {
-            if (teacher->getId() == teacherId) {
-                selectedTeacher = teacher;
-                break;
-            }
-        }
-        
-        if (!selectedTeacher) {
-            return;
-        }
-        
-        // Create TeacherRequirement
-        auto requirement = std::make_shared<TeacherRequirement>(selectedCourse, selectedTeacher);
-        scheduler->addRequirement(requirement);
-    } 
-    else { // TimeSlot Preference
-        // Get time slot parameters
-        std::string dayOption = dayDropdown->getSelectedOption();
-        std::string startHourStr = startHourInput->getText();
-        std::string startMinuteStr = startMinuteInput->getText();
-        std::string durationStr = durationInput->getText();
-        
-        // Validate input
-        if (startHourStr.empty() || startMinuteStr.empty() || durationStr.empty()) {
-            return;
-        }
-        
-        // Parse time values
-        int startHour, startMinute, duration;
+    // Get time slot parameters
+    std::string dayOption = dayDropdown->getSelectedOption();
+    std::string startHourStr = startHourInput->getText();
+    std::string startMinuteStr = startMinuteInput->getText();
+    
+    // Get the duration from the section's existing timeSlot
+    int duration = selectedSection->getTimeSlot()->getDurationMinutes();
+    
+    // Parse time values
+    int startHour = -1, startMinute = -1;
+    
+    // Only parse start time if both fields are provided
+    if (!startHourStr.empty() && !startMinuteStr.empty()) {
         try {
             startHour = std::stoi(startHourStr);
             startMinute = std::stoi(startMinuteStr);
-            duration = std::stoi(durationStr);
             
             // Validate time values
             if (startHour < 0 || startHour > 23 || 
-                startMinute < 0 || startMinute > 59 || 
-                duration <= 0) {
+                startMinute < 0 || startMinute > 59) {
                 return;
             }
         } catch (const std::exception&) {
             return;
         }
-        
-        // Create TimeSlot
-        TimeSlot::Day day;
-        if (dayOption == "Monday") day = TimeSlot::MONDAY;
-        else if (dayOption == "Tuesday") day = TimeSlot::TUESDAY;
-        else if (dayOption == "Wednesday") day = TimeSlot::WEDNESDAY;
-        else if (dayOption == "Thursday") day = TimeSlot::THURSDAY;
-        else day = TimeSlot::FRIDAY;
-        
-        auto timeSlot = std::make_shared<TimeSlot>(day, startHour, startMinute, duration);
-        
-        // Create TimeSlotRequirement
-        auto requirement = std::make_shared<TimeSlotRequirement>(selectedCourse, timeSlot);
-        scheduler->addRequirement(requirement);
     }
+    
+    // Create TimeSlot
+    TimeSlot::Day day;
+    if (dayOption == "Monday") day = TimeSlot::MONDAY;
+    else if (dayOption == "Tuesday") day = TimeSlot::TUESDAY;
+    else if (dayOption == "Wednesday") day = TimeSlot::WEDNESDAY;
+    else if (dayOption == "Thursday") day = TimeSlot::THURSDAY;
+    else day = TimeSlot::FRIDAY;
+    
+    auto timeSlot = std::make_shared<TimeSlot>(duration, day, startHour, startMinute);
+    
+    // Create SectionTimeSlotRequirement
+    auto requirement = std::make_shared<SectionTimeSlotRequirement>(selectedSection, timeSlot);
+    scheduler->addRequirement(requirement);
     
     // Clear input fields
     startHourInput->clear();
     startMinuteInput->clear();
-    durationInput->clear();
     
     // Refresh requirement list
     refreshRequirementList();
@@ -1465,6 +1371,8 @@ void ScheduleViewerScreen::initialize() {
     prevButton->setOnClick([this]() {
         if (!displayedSchedules.empty() && currentScheduleIndex > 0) {
             currentScheduleIndex--;
+            std::cout << "Previous button clicked. Current schedule index: " 
+                      << currentScheduleIndex + 1 << "/" << displayedSchedules.size() << std::endl;
         }
     });
     components.push_back(std::move(prevButton));
@@ -1475,6 +1383,8 @@ void ScheduleViewerScreen::initialize() {
     nextButton->setOnClick([this]() {
         if (!displayedSchedules.empty() && currentScheduleIndex < static_cast<int>(displayedSchedules.size()) - 1) {
             currentScheduleIndex++;
+            std::cout << "Next button clicked. Current schedule index: " 
+                      << currentScheduleIndex + 1 << "/" << displayedSchedules.size() << std::endl;
         }
     });
     components.push_back(std::move(nextButton));
@@ -1505,6 +1415,10 @@ void ScheduleViewerScreen::draw() {
     if (displayedSchedules.empty()) {
         DrawText("No schedules generated yet. Press 'Generate' to create schedules.", 200, 300, 20, GRAY);
     } else {
+        // Display current schedule index information
+        DrawText(("Schedule #" + std::to_string(currentScheduleIndex + 1) + " of " + 
+                 std::to_string(displayedSchedules.size())).c_str(), 560, 70, 20, BLACK);
+        
         drawScheduleGrid();
     }
 }
@@ -1516,6 +1430,20 @@ ScreenState ScheduleViewerScreen::processInput() {
             // If the back button was clicked
             if (i == 0) {
                 return ScreenState::MAIN_MENU;
+            }
+            // If the Generate button was clicked
+            else if (i == 1) {
+                // This will be handled by the button's onClick callback
+            }
+            // If the Previous button was clicked
+            else if (i == 2) {
+                // The navigation is already handled in the onClick callback
+                // Do not update currentScheduleIndex again here
+            }
+            // If the Next button was clicked
+            else if (i == 3) {
+                // The navigation is already handled in the onClick callback
+                // Do not update currentScheduleIndex again here
             }
             // If the View PQ Tree button was clicked
             else if (i == 4 && !displayedSchedules.empty()) {
@@ -1537,10 +1465,6 @@ void ScheduleViewerScreen::drawScheduleGrid() {
     if (displayedSchedules.empty() || currentScheduleIndex >= static_cast<int>(displayedSchedules.size())) {
         return;
     }
-    
-    // Draw schedule info
-    DrawText(("Schedule #" + std::to_string(currentScheduleIndex + 1) + " of " + 
-             std::to_string(displayedSchedules.size())).c_str(), 560, 30, 20, BLACK);
     
     // Grid constants
     const int gridStartX = 100;
@@ -1567,9 +1491,6 @@ void ScheduleViewerScreen::drawScheduleGrid() {
     std::vector<std::string> dayLabels = {
         "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"
     };
-    
-    // Draw header text "Schedule"
-    DrawText("Schedule", gridStartX, gridStartY - 40, 30, DARKBLUE);
     
     // Draw grid lines and headers
     
@@ -1603,7 +1524,7 @@ void ScheduleViewerScreen::drawScheduleGrid() {
         }
     }
     
-    // Draw classes on the grid
+    // Draw classes on the grid - Make sure we're using the current schedule index
     auto schedule = displayedSchedules[currentScheduleIndex];
     for (const auto& section : schedule->getSections()) {
         auto timeSlot = section->getTimeSlot();
@@ -1650,11 +1571,8 @@ void ScheduleViewerScreen::drawScheduleGrid() {
         int startHour12 = startHour > 12 ? startHour - 12 : (startHour == 0 ? 12 : startHour);
         int endHour12 = endHour > 12 ? endHour - 12 : (endHour == 0 ? 12 : endHour);
         
-        snprintf(startTimeStr, sizeof(startTimeStr), "%d:%02dAM", startHour12, startMin);
-        snprintf(endTimeStr, sizeof(endTimeStr), "%d:%02dAM", endHour12, endMin);
-        
-        if (startPM) strcpy(&startTimeStr[strlen(startTimeStr)-2], "PM");
-        if (endPM) strcpy(&endTimeStr[strlen(endTimeStr)-2], "PM");
+        snprintf(startTimeStr, sizeof(startTimeStr), "%d:%02d%s", startHour12, startMin, startPM ? "PM" : "AM");
+        snprintf(endTimeStr, sizeof(endTimeStr), "%d:%02d%s", endHour12, endMin, endPM ? "PM" : "AM");
         
         // Draw text within the class block
         int textY = classY + 5;
@@ -1664,24 +1582,20 @@ void ScheduleViewerScreen::drawScheduleGrid() {
         DrawText(courseText.c_str(), classX + 10, textY, 18, BLACK);
         textY += 20;
         
-        // Class type (assuming a lecture for simplicity)
-        std::string typeText = "Lecture";
-        DrawText(typeText.c_str(), classX + 10, textY, 16, BLACK);
+        // Teacher name
+        std::string teacherText = section->getTeacher()->getName();
+        DrawText(teacherText.c_str(), classX + 10, textY, 16, BLACK);
         textY += 16;
         
         // Time text
         std::string timeText = std::string(startTimeStr) + " - " + std::string(endTimeStr);
         DrawText(timeText.c_str(), classX + 10, textY, 16, BLACK);
-        textY += 16;
-        
-        // Teacher name
-        std::string locationText = "HU City Campus";
-        DrawText(locationText.c_str(), classX + 10, textY, 14, BLACK);
     }
 }
 
+// Remove the unused function since drawScheduleGrid now handles everything
 void ScheduleViewerScreen::drawSelectedSchedule() {
-    // This function is replaced by drawScheduleGrid
+    // This function is no longer needed as drawScheduleGrid handles the display
 }
 
 // PQTreeViewerScreen implementation
@@ -1884,25 +1798,21 @@ void PQTreeViewerScreen::drawNode(std::shared_ptr<PQNode> node, Vector2 position
 
 // New method to add dummy data
 void UI::addDummyData() {
-    // Create some courses
-    auto mathCourse = std::make_shared<Course>("MATH101", "Introduction to Calculus", 4);
-    auto csCourse = std::make_shared<Course>("CS101", "Introduction to Programming", 3);
-    auto engCourse = std::make_shared<Course>("ENG101", "Academic Writing", 3);
-    auto physicsCourse = std::make_shared<Course>("PHYS101", "Mechanics", 4);
-    auto statsCourse = std::make_shared<Course>("STAT201", "Statistics", 3);
+    // Create courses for Math, Computer, and English
+    auto mathCourse = std::make_shared<Course>("MATH101", "Mathematics", 3);
+    auto compCourse = std::make_shared<Course>("COMP101", "Computer Science", 3);
+    auto engCourse = std::make_shared<Course>("ENG101", "English", 3);
     
     scheduler->addCourse(mathCourse);
-    scheduler->addCourse(csCourse);
+    scheduler->addCourse(compCourse);
     scheduler->addCourse(engCourse);
-    scheduler->addCourse(physicsCourse);
-    scheduler->addCourse(statsCourse);
     
-    // Create some teachers
-    auto maria = std::make_shared<Teacher>("T001", "Maria Khan");
-    auto qasim = std::make_shared<Teacher>("T002", "Qasim Ahmed");
-    auto salman = std::make_shared<Teacher>("T003", "Salman Siddiqui");
-    auto hamna = std::make_shared<Teacher>("T004", "Hamna Syed");
-    auto sara = std::make_shared<Teacher>("T005", "Sara Ali");
+    // Create teachers
+    auto maria = std::make_shared<Teacher>("T001", "Miss Maria");
+    auto qasim = std::make_shared<Teacher>("T002", "Sir Qasim");
+    auto salman = std::make_shared<Teacher>("T003", "Sir Salman");
+    auto hamna = std::make_shared<Teacher>("T004", "Miss Hamna");
+    auto sara = std::make_shared<Teacher>("T005", "Miss Sara");
     
     scheduler->addTeacher(maria);
     scheduler->addTeacher(qasim);
@@ -1910,51 +1820,43 @@ void UI::addDummyData() {
     scheduler->addTeacher(hamna);
     scheduler->addTeacher(sara);
     
-    // Create sections with different time slots
+    // Create sections with only duration - day and start time will be dynamically assigned
     
     // Math sections
-    auto mathTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 8, 0, 90);
-    auto mathSection1 = std::make_shared<Section>("M101-A", mathCourse, maria, mathTimeSlot1);
+    auto mathTimeSlot1 = std::make_shared<TimeSlot>(60); // 60 min duration
+    auto mathSection1 = std::make_shared<Section>("MATH101-A", mathCourse, maria, mathTimeSlot1);
     
-    auto mathTimeSlot2 = std::make_shared<TimeSlot>(TimeSlot::TUESDAY, 9, 0, 90);
-    auto mathSection2 = std::make_shared<Section>("M101-B", mathCourse, qasim, mathTimeSlot2);
+    auto mathTimeSlot2 = std::make_shared<TimeSlot>(60); // 60 min duration
+    auto mathSection2 = std::make_shared<Section>("MATH101-B", mathCourse, qasim, mathTimeSlot2);
     
-    // CS sections
-    auto csTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 11, 0, 90);
-    auto csSection1 = std::make_shared<Section>("CS101-A", csCourse, salman, csTimeSlot1);
+    // Computer sections
+    auto compTimeSlot1 = std::make_shared<TimeSlot>(90); // 90 min duration
+    auto compSection1 = std::make_shared<Section>("COMP101-A", compCourse, salman, compTimeSlot1);
     
-    auto csTimeSlot2 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 13, 0, 90);
-    auto csSection2 = std::make_shared<Section>("CS101-B", csCourse, maria, csTimeSlot2);
+    auto compTimeSlot2 = std::make_shared<TimeSlot>(90); // 90 min duration
+    auto compSection2 = std::make_shared<Section>("COMP101-B", compCourse, maria, compTimeSlot2);
     
     // English sections
-    auto engTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::TUESDAY, 8, 0, 90);
+    auto engTimeSlot1 = std::make_shared<TimeSlot>(75); // 75 min duration
     auto engSection1 = std::make_shared<Section>("ENG101-A", engCourse, hamna, engTimeSlot1);
     
-    auto engTimeSlot2 = std::make_shared<TimeSlot>(TimeSlot::MONDAY, 14, 0, 90);
+    auto engTimeSlot2 = std::make_shared<TimeSlot>(75); // 75 min duration
     auto engSection2 = std::make_shared<Section>("ENG101-B", engCourse, sara, engTimeSlot2);
-    
-    // Physics sections
-    auto physTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::WEDNESDAY, 10, 0, 90);
-    auto physSection1 = std::make_shared<Section>("PHYS101-A", physicsCourse, qasim, physTimeSlot1);
-    
-    // Stats sections
-    auto statsTimeSlot1 = std::make_shared<TimeSlot>(TimeSlot::THURSDAY, 13, 0, 90);
-    auto statsSection1 = std::make_shared<Section>("STAT201-A", statsCourse, salman, statsTimeSlot1);
     
     // Add all sections to the scheduler
     scheduler->addSection(mathSection1);
     scheduler->addSection(mathSection2);
-    scheduler->addSection(csSection1);
-    scheduler->addSection(csSection2);
+    scheduler->addSection(compSection1);
+    scheduler->addSection(compSection2);
     scheduler->addSection(engSection1);
     scheduler->addSection(engSection2);
-    scheduler->addSection(physSection1);
-    scheduler->addSection(statsSection1);
     
-    // Add some requirements
-    auto mathTeacherReq = std::make_shared<TeacherRequirement>(mathCourse, maria);
-    auto csTimeReq = std::make_shared<TimeSlotRequirement>(csCourse, csTimeSlot1);
+    // Add requirements that specific sections should be at specific times
+    auto compSectionReq = std::make_shared<SectionTimeSlotRequirement>(compSection1, 
+        std::make_shared<TimeSlot>(compSection1->getTimeSlot()->getDurationMinutes(), TimeSlot::MONDAY, 9, 0));  // COMP101-A on Monday at 9:00
+    auto mathSectionReq = std::make_shared<SectionTimeSlotRequirement>(mathSection1, 
+        std::make_shared<TimeSlot>(mathSection1->getTimeSlot()->getDurationMinutes(), TimeSlot::WEDNESDAY, 13, 0));  // MATH101-A on Wednesday at 13:00
     
-    scheduler->addRequirement(mathTeacherReq);
-    scheduler->addRequirement(csTimeReq);
+    scheduler->addRequirement(compSectionReq);
+    scheduler->addRequirement(mathSectionReq);
 } 

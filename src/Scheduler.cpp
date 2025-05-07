@@ -3,6 +3,7 @@
 #include <map>
 #include <set>
 #include <random>
+#include <iostream>
 
 Scheduler::Scheduler() {
     clear();
@@ -43,146 +44,252 @@ bool Scheduler::generateSchedule() {
     possibleSchedules.clear();
     currentSchedule = nullptr;
     
-    // Organize sections by day
-    std::map<TimeSlot::Day, std::vector<std::shared_ptr<Section>>> sectionsByDay;
+    // First, group sections by course to ensure we pick only one section per course
+    std::map<std::string, std::vector<std::shared_ptr<Section>>> sectionsByCourse;
     for (const auto& section : sections) {
-        sectionsByDay[section->getTimeSlot()->getDay()].push_back(section);
+        sectionsByCourse[section->getCourse()->getCode()].push_back(section);
     }
     
-    // Generate all possible permutations for each day using PQ tree
-    std::map<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>> permutationsByDay;
+    // Generate all possible combinations of sections (one per course)
+    std::vector<std::vector<std::shared_ptr<Section>>> allPossibleCombinations;
+    generateCourseSelections(sectionsByCourse, {}, allPossibleCombinations);
     
-    for (const auto& pair : sectionsByDay) {
-        TimeSlot::Day day = pair.first;
-        const auto& daySections = pair.second;
+    // For each combination, try to create a valid schedule
+    for (const auto& combination : allPossibleCombinations) {
+        // Create a PQ tree for time ordering
+        PQTree tree;
+        tree.buildTimeOrderedTree(combination);
         
-        if (!daySections.empty()) {
-            // Create a PQ tree for this day's sections
-            PQTree tree;
-            tree.buildTimeOrderedTree(daySections);
-            
-            // Get all valid permutations of sections for this day
-            auto frontiers = tree.getFrontiers();
-            
-            // Convert string frontiers back to section permutations
-            std::vector<std::vector<std::shared_ptr<Section>>> dayPermutations;
-            
-            // Map to quickly look up sections by their label
-            std::map<std::string, std::shared_ptr<Section>> sectionsByLabel;
-            for (const auto& section : daySections) {
-                std::string label = section->getCourse()->getCode() + " (" + 
-                                section->getTeacher()->getName() + ", " +
-                                section->getTimeSlot()->toString() + ")";
-                sectionsByLabel[label] = section;
-            }
-            
-            // Create section permutations from string permutations
-            for (const auto& frontier : frontiers) {
-                std::vector<std::shared_ptr<Section>> perm;
-                for (const auto& label : frontier) {
-                    // Extract section ID from label if it's a leaf
-                    if (label.find("Leaf:") == 0) {
-                        std::string actualLabel = label.substr(6); // Skip "Leaf: "
-                        if (sectionsByLabel.find(actualLabel) != sectionsByLabel.end()) {
-                            perm.push_back(sectionsByLabel[actualLabel]);
-                        }
-                    } else if (sectionsByLabel.find(label) != sectionsByLabel.end()) {
-                        perm.push_back(sectionsByLabel[label]);
+        // Get all valid permutations
+        auto permutations = tree.getFrontiers();
+        
+        // For each permutation, try to assign start times
+        for (const auto& permutation : permutations) {
+            // Convert string permutation to section indices
+            std::vector<int> sectionIndices;
+            for (const auto& label : permutation) {
+                // Find matching section in the combination
+                for (size_t i = 0; i < combination.size(); i++) {
+                    std::string sectionLabel = combination[i]->getCourse()->getCode() + " (" + 
+                                              combination[i]->getTeacher()->getName() + ", " +
+                                              combination[i]->getTimeSlot()->toString() + ")";
+                    
+                    // Also check with "Leaf: " prefix (as PQ Tree might add this)
+                    if (label == sectionLabel || label == "Leaf: " + sectionLabel) {
+                        sectionIndices.push_back(i);
+                        break;
                     }
                 }
-                if (!perm.empty()) {
-                    dayPermutations.push_back(perm);
-                }
             }
             
-            permutationsByDay[day] = dayPermutations;
+            // Skip if we couldn't map all labels to sections
+            if (sectionIndices.size() != permutation.size()) {
+                continue;
+            }
+            
+            auto schedule = tryCreateScheduleWithTimes(sectionIndices);
+            if (schedule.getSections().size() > 0) {
+                // Check if this schedule is equivalent to one we already have
+                bool isDuplicate = false;
+                for (const auto& existingSchedule : possibleSchedules) {
+                    if (areSchedulesEquivalent(schedule, *existingSchedule)) {
+                        isDuplicate = true;
+                        break;
+                    }
+                }
+                
+                // Only add if not a duplicate
+                if (!isDuplicate) {
+                    possibleSchedules.push_back(std::make_shared<Schedule>(schedule));
+                }
+            }
         }
     }
     
-    // Generate all possible schedules from combinations of daily permutations
-    generateAllScheduleCombinations(permutationsByDay);
+    // Debug output
+    std::cout << "Generated " << possibleSchedules.size() << " valid schedules." << std::endl;
+    
+    // Print a summary of each schedule
+    int idx = 1;
+    for (const auto& schedule : possibleSchedules) {
+        std::cout << "Schedule " << idx++ << ":\n";
+        for (const auto& section : schedule->getSections()) {
+            std::cout << "  " << section->getCourse()->getCode() 
+                     << " (" << section->getTeacher()->getName() 
+                     << ", " << section->getTimeSlot()->toString() << ")\n";
+        }
+        std::cout << std::endl;
+    }
     
     // Find a schedule that satisfies all requirements
     return findSatisfyingSchedule();
 }
 
-void Scheduler::generateAllScheduleCombinations(
-    const std::map<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>& permutationsByDay) {
+// Helper method to generate all combinations of sections (one per course)
+void Scheduler::generateCourseSelections(
+    const std::map<std::string, std::vector<std::shared_ptr<Section>>>& sectionsByCourse,
+    std::vector<std::shared_ptr<Section>> current,
+    std::vector<std::vector<std::shared_ptr<Section>>>& result) {
     
-    // Create a vector of day/permutation pairs for easier processing
-    std::vector<std::pair<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>> dayPermList;
-    for (const auto& pair : permutationsByDay) {
-        dayPermList.push_back(pair);
-    }
-    
-    // Use a recursive helper to generate all combinations
-    std::shared_ptr<Schedule> currentBuildingSchedule = std::make_shared<Schedule>();
-    generateScheduleRecursive(dayPermList, 0, currentBuildingSchedule);
-    
-    // Remove duplicate and conflicting schedules
-    std::vector<std::shared_ptr<Schedule>> filteredSchedules;
-    for (const auto& schedule : possibleSchedules) {
-        if (!schedule->hasConflicts()) {
-            filteredSchedules.push_back(schedule);
-        }
-    }
-    
-    possibleSchedules = filteredSchedules;
-}
-
-void Scheduler::generateScheduleRecursive(
-    const std::vector<std::pair<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>>& dayPermList,
-    size_t dayIndex,
-    std::shared_ptr<Schedule> currentSchedule) {
-    
-    // Base case: we've processed all days
-    if (dayIndex >= dayPermList.size()) {
-        // Make a copy of the final schedule
-        auto finalSchedule = std::make_shared<Schedule>();
-        for (const auto& section : currentSchedule->getSections()) {
-            finalSchedule->addSection(section);
-        }
-        
-        // Check if this schedule covers all courses
-        std::set<std::string> coveredCourses;
-        for (const auto& section : finalSchedule->getSections()) {
-            coveredCourses.insert(section->getCourse()->getCode());
-        }
-        
-        // Only add the schedule if it covers all courses
-        if (coveredCourses.size() == courses.size()) {
-            possibleSchedules.push_back(finalSchedule);
-        }
-        
+    // If we've processed all courses, add this combination to the result
+    if (current.size() == sectionsByCourse.size()) {
+        result.push_back(current);
         return;
     }
     
-    // Get the current day's permutations
-    const auto& currentDayPerms = dayPermList[dayIndex].second;
+    // Get the next course to process
+    auto it = sectionsByCourse.begin();
+    std::advance(it, current.size());
     
-    // For each permutation of the current day
-    for (const auto& perm : currentDayPerms) {
-        // Try this permutation
-        auto tempSchedule = std::make_shared<Schedule>();
+    // Try each section for this course
+    for (const auto& section : it->second) {
+        auto newCurrent = current;
+        newCurrent.push_back(section);
+        generateCourseSelections(sectionsByCourse, newCurrent, result);
+    }
+}
+
+// Helper method to try creating a schedule with assigned start times
+Schedule Scheduler::tryCreateScheduleWithTimes(const std::vector<int>& permutation) {
+    Schedule schedule;
+    std::map<std::string, std::shared_ptr<Section>> sectionsById;
+
+    // Populate the map for quick section lookup
+    for (const auto& section : sections) {
+        sectionsById[section->getId()] = section;
+    }
+
+    std::vector<std::shared_ptr<Section>> selectedSections;
+    for (int idx : permutation) {
+        selectedSections.push_back(sections[idx]);
+    }
+
+    // First, identify sections that have specific time requirements
+    std::vector<std::shared_ptr<Section>> sectionsWithRequirements;
+    std::vector<std::shared_ptr<Section>> sectionsWithoutRequirements;
+
+    // Track the latest end time for each day to avoid conflicts
+    std::map<TimeSlot::Day, int> latestEndTimeByDay;
+    for (auto day : {TimeSlot::MONDAY, TimeSlot::TUESDAY, TimeSlot::WEDNESDAY, TimeSlot::THURSDAY, TimeSlot::FRIDAY}) {
+        latestEndTimeByDay[day] = 8 * 60; // Start at 8:00 AM
+    }
+
+    // Check requirements and separate sections that have specific time requirements
+    for (const auto& section : selectedSections) {
+        bool hasSpecificRequirement = false;
         
-        // Copy existing schedule
-        for (const auto& section : currentSchedule->getSections()) {
-            tempSchedule->addSection(section);
-        }
-        
-        // Add this day's sections
-        for (const auto& section : perm) {
-            // Check if this course is already in the schedule
-            std::string courseCode = section->getCourse()->getCode();
-            auto existing = tempSchedule->getSectionsForCourse(courseCode);
-            if (existing.empty()) {
-                tempSchedule->addSection(section);
+        for (const auto& req : requirements) {
+            // Check if this is a SectionTimeSlotRequirement for this section
+            auto sectionReq = std::dynamic_pointer_cast<SectionTimeSlotRequirement>(req);
+            if (sectionReq && sectionReq->getSection()->getId() == section->getId()) {
+                sectionsWithRequirements.push_back(section);
+                hasSpecificRequirement = true;
+                break;
             }
         }
         
-        // Recursively process the next day
-        generateScheduleRecursive(dayPermList, dayIndex + 1, tempSchedule);
+        if (!hasSpecificRequirement) {
+            sectionsWithoutRequirements.push_back(section);
+        }
     }
+
+    // First, schedule sections with specific time requirements
+    for (const auto& section : sectionsWithRequirements) {
+        // Find the matching requirement for this section
+        for (const auto& req : requirements) {
+            auto sectionReq = std::dynamic_pointer_cast<SectionTimeSlotRequirement>(req);
+            if (sectionReq && sectionReq->getSection()->getId() == section->getId()) {
+                auto reqTimeSlot = sectionReq->getTimeSlot();
+                
+                // Get the required day and time
+                TimeSlot::Day day = reqTimeSlot->getDay();
+                int startTime = reqTimeSlot->getStartHour() * 60 + reqTimeSlot->getStartMinute();
+                int duration = section->getTimeSlot()->getDurationMinutes();
+                int endTime = startTime + duration;
+                
+                // Update the latest end time for this day
+                latestEndTimeByDay[day] = std::max(latestEndTimeByDay[day], endTime);
+                
+                // Create a new TimeSlot with the required day and time
+                auto timeSlot = std::make_shared<TimeSlot>(
+                    section->getTimeSlot()->getDurationMinutes(),
+                    day, 
+                    reqTimeSlot->getStartHour(), 
+                    reqTimeSlot->getStartMinute()
+                );
+                
+                // Create a new section with the assigned time slot
+                auto scheduleSection = std::make_shared<Section>(
+                    section->getId(),
+                    section->getCourse(),
+                    section->getTeacher(),
+                    timeSlot
+                );
+                
+                schedule.addSection(scheduleSection);
+                break;
+            }
+        }
+    }
+
+    // Now schedule the remaining sections without specific requirements
+    // Sort by duration (longest first) for better packing
+    std::sort(sectionsWithoutRequirements.begin(), sectionsWithoutRequirements.end(),
+        [](const auto& a, const auto& b) {
+            return a->getTimeSlot()->getDurationMinutes() > b->getTimeSlot()->getDurationMinutes();
+        }
+    );
+
+    for (const auto& section : sectionsWithoutRequirements) {
+        // Find the day with the earliest end time (to balance the schedule)
+        TimeSlot::Day selectedDay = TimeSlot::MONDAY;
+        int earliestEndTime = INT_MAX;
+        
+        for (auto day : {TimeSlot::MONDAY, TimeSlot::TUESDAY, TimeSlot::WEDNESDAY, TimeSlot::THURSDAY, TimeSlot::FRIDAY}) {
+            if (latestEndTimeByDay[day] < earliestEndTime) {
+                earliestEndTime = latestEndTimeByDay[day];
+                selectedDay = day;
+            }
+        }
+        
+        // Assign this section to the day with the earliest end time
+        int startTime = latestEndTimeByDay[selectedDay];
+        int duration = section->getTimeSlot()->getDurationMinutes();
+        int endTime = startTime + duration;
+        
+        // Update the latest end time for this day
+        latestEndTimeByDay[selectedDay] = endTime;
+        
+        // Calculate hours and minutes from start time
+        int startHour = startTime / 60;
+        int startMinute = startTime % 60;
+        
+        // Create a new TimeSlot with the assigned day and time
+        auto timeSlot = std::make_shared<TimeSlot>(
+            section->getTimeSlot()->getDurationMinutes(),
+            selectedDay,
+            startHour,
+            startMinute
+        );
+        
+        // Create a new section with the assigned time slot
+        auto scheduleSection = std::make_shared<Section>(
+            section->getId(),
+            section->getCourse(),
+            section->getTeacher(),
+            timeSlot
+        );
+        
+        schedule.addSection(scheduleSection);
+    }
+    
+    // Check if the schedule has conflicts
+    if (schedule.hasConflicts()) {
+        // Return an empty schedule if there are conflicts
+        return Schedule();
+    }
+    
+    return schedule;
 }
 
 std::shared_ptr<Schedule> Scheduler::getCurrentSchedule() const {
@@ -265,31 +372,48 @@ PQTree Scheduler::buildSchedulePQTree() const {
         auto rootNode = tree.createPNode("Schedule");
         tree.setRoot(rootNode);
         
+        // Group days by the day value for cleaner naming
+        std::map<int, std::string> dayNames = {
+            {static_cast<int>(TimeSlot::MONDAY), "Monday"},
+            {static_cast<int>(TimeSlot::TUESDAY), "Tuesday"},
+            {static_cast<int>(TimeSlot::WEDNESDAY), "Wednesday"},
+            {static_cast<int>(TimeSlot::THURSDAY), "Thursday"},
+            {static_cast<int>(TimeSlot::FRIDAY), "Friday"}
+        };
+        
         // For each day, create a Q-node with sections
         for (const auto& pair : sectionsByDay) {
-            const auto& day = pair.first;
-            const auto& daySections = pair.second;
+            TimeSlot::Day day = pair.first;
+            const auto& sections = pair.second;
             
-            // Create a node for the day
-            const char* dayNames[] = {"Monday", "Tuesday", "Wednesday", "Thursday", "Friday"};
-            auto dayNode = tree.createQNode(dayNames[static_cast<int>(day)]);
-            rootNode->addChild(dayNode);
-            
-            // Sort sections by time
-            std::vector<std::shared_ptr<Section>> sortedSections = daySections;
-            std::sort(sortedSections.begin(), sortedSections.end(),
-                [](const std::shared_ptr<Section>& a, const std::shared_ptr<Section>& b) {
-                    return a->getTimeSlot()->getStartHour() < b->getTimeSlot()->getStartHour() ||
-                           (a->getTimeSlot()->getStartHour() == b->getTimeSlot()->getStartHour() &&
-                            a->getTimeSlot()->getStartMinute() < b->getTimeSlot()->getStartMinute());
-                });
-            
-            // Add section leaves
-            for (const auto& section : sortedSections) {
-                std::string label = section->getCourse()->getCode() + " (" + 
-                                   section->getTeacher()->getName() + ")";
-                auto leaf = tree.createLeaf(label);
-                dayNode->addChild(leaf);
+            if (!sections.empty()) {
+                // Create a node for the day
+                auto dayNode = tree.createQNode(dayNames[static_cast<int>(day)]);
+                rootNode->addChild(dayNode);
+                
+                // Sort sections by time
+                std::vector<std::shared_ptr<Section>> sortedSections = sections;
+                std::sort(sortedSections.begin(), sortedSections.end(),
+                    [](const std::shared_ptr<Section>& a, const std::shared_ptr<Section>& b) {
+                        // Only sort by time if both have start times
+                        if (a->getTimeSlot()->hasStartTime() && b->getTimeSlot()->hasStartTime()) {
+                            return a->getTimeSlot()->getStartHour() < b->getTimeSlot()->getStartHour() ||
+                                   (a->getTimeSlot()->getStartHour() == b->getTimeSlot()->getStartHour() &&
+                                    a->getTimeSlot()->getStartMinute() < b->getTimeSlot()->getStartMinute());
+                        }
+                        return false;
+                    });
+                
+                // Add section leaves
+                for (const auto& section : sortedSections) {
+                    // Format the label similar to the sample code
+                    std::string label = section->getCourse()->getCode() + " (" + 
+                                        section->getTeacher()->getName() + ", " +
+                                        section->getTimeSlot()->toString() + ")";
+                    
+                    auto leaf = tree.createLeaf(label);
+                    dayNode->addChild(leaf);
+                }
             }
         }
         
@@ -298,4 +422,93 @@ PQTree Scheduler::buildSchedulePQTree() const {
     }
     
     return tree;
+}
+
+// Helper to check if two schedules are equivalent (have same sections)
+bool Scheduler::areSchedulesEquivalent(const Schedule& a, const Schedule& b) const {
+    // First check if they have the same number of sections
+    if (a.getSections().size() != b.getSections().size()) {
+        return false;
+    }
+    
+    // For each section in schedule a, find a matching section in schedule b
+    for (const auto& sectionA : a.getSections()) {
+        bool foundMatch = false;
+        
+        for (const auto& sectionB : b.getSections()) {
+            // Check that the section has the same course
+            if (sectionA->getCourse()->getCode() != sectionB->getCourse()->getCode()) {
+                continue;
+            }
+            
+            // Check that the section has the same teacher
+            if (sectionA->getTeacher()->getId() != sectionB->getTeacher()->getId()) {
+                continue;
+            }
+            
+            // Check that the section has the same day
+            if (sectionA->getTimeSlot()->getDay() != sectionB->getTimeSlot()->getDay()) {
+                continue;
+            }
+            
+            // Check that the section has the same start time
+            if (sectionA->getTimeSlot()->getStartHour() != sectionB->getTimeSlot()->getStartHour() ||
+                sectionA->getTimeSlot()->getStartMinute() != sectionB->getTimeSlot()->getStartMinute()) {
+                continue;
+            }
+            
+            // If we get here, sections match
+            foundMatch = true;
+            break;
+        }
+        
+        // If we couldn't find a matching section, schedules are different
+        if (!foundMatch) {
+            return false;
+        }
+    }
+    
+    // All sections had matches, schedules are equivalent
+    return true;
+}
+
+bool Scheduler::scheduleSections(std::shared_ptr<PQNode> permutationTree) {
+    // Clear any existing schedules
+    possibleSchedules.clear();
+    
+    // Create a PQ tree and set the provided node as root
+    PQTree tree;
+    tree.setRoot(permutationTree);
+    
+    // Get all the permutations from the tree
+    std::vector<std::vector<int>> permutations;
+    tree.getAllPermutations(permutations);
+    
+    std::cout << "Found " << permutations.size() << " possible permutations" << std::endl;
+    
+    // Try to create a schedule for each permutation
+    for (const auto& permutation : permutations) {
+        // Create the schedule with assigned times
+        auto schedule = tryCreateScheduleWithTimes(permutation);
+        
+        // Check if a valid schedule was created
+        if (!schedule.hasConflicts() && schedule.getSections().size() > 0) {
+            // Check if we already have an equivalent schedule
+            bool isDuplicate = false;
+            for (const auto& existingSchedule : possibleSchedules) {
+                if (areSchedulesEquivalent(schedule, *existingSchedule)) {
+                    isDuplicate = true;
+                    break;
+                }
+            }
+            
+            // Only add if it's not a duplicate
+            if (!isDuplicate) {
+                possibleSchedules.push_back(std::make_shared<Schedule>(schedule));
+            }
+        }
+    }
+    
+    // Return true if at least one valid schedule was found
+    return !possibleSchedules.empty();
 } 

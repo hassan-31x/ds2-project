@@ -51,14 +51,20 @@ private:
     // Helper method to find a schedule that satisfies all requirements
     bool findSatisfyingSchedule();
     
-    // Helper methods for generating all possible schedule combinations
-    void generateAllScheduleCombinations(
-        const std::map<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>& permutationsByDay);
-    
-    void generateScheduleRecursive(
-        const std::vector<std::pair<TimeSlot::Day, std::vector<std::vector<std::shared_ptr<Section>>>>>& dayPermList,
-        size_t dayIndex,
-        std::shared_ptr<Schedule> currentSchedule);
+    // Helper method to generate all combinations of sections (one per course)
+    void generateCourseSelections(
+        const std::map<std::string, std::vector<std::shared_ptr<Section>>>& sectionsByCourse,
+        std::vector<std::shared_ptr<Section>> current,
+        std::vector<std::vector<std::shared_ptr<Section>>>& result);
+        
+    // Helper method to schedule sections based on a PQ Tree
+    bool scheduleSections(std::shared_ptr<PQNode> permutationTree);
+        
+    // Helper method to create a schedule with assigned start times
+    Schedule tryCreateScheduleWithTimes(const std::vector<int>& permutation);
+        
+    // Helper to check if two schedules are equivalent (have same sections)
+    bool areSchedulesEquivalent(const Schedule& a, const Schedule& b) const;
 };
 
 #endif // SCHEDULER_HPP 

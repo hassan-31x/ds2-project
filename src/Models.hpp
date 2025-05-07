@@ -18,9 +18,10 @@ class Schedule;
 // Class representing a time slot
 class TimeSlot {
 public:
-    enum Day { MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY };
+    enum Day { MONDAY, TUESDAY, WEDNESDAY, THURSDAY, FRIDAY, UNASSIGNED };
     
-    TimeSlot(Day day, int startHour, int startMinute, int durationMinutes);
+    // Constructor with optional day and start time (day is UNASSIGNED if not provided)
+    TimeSlot(int durationMinutes, Day day = UNASSIGNED, int startHour = -1, int startMinute = -1);
     
     Day getDay() const;
     int getStartHour() const;
@@ -29,6 +30,13 @@ public:
     std::string toString() const;
     
     bool overlaps(const TimeSlot& other) const;
+    bool hasStartTime() const;
+    bool hasDay() const;
+    
+    // Create a complete timeslot with day and start time from a partial one
+    std::shared_ptr<TimeSlot> withStartTime(int startHour, int startMinute) const;
+    std::shared_ptr<TimeSlot> withDay(Day day) const;
+    std::shared_ptr<TimeSlot> withDayAndTime(Day day, int startHour, int startMinute) const;
     
 private:
     Day day;
@@ -79,6 +87,7 @@ private:
 // Class representing a section of a course
 class Section {
 public:
+    // Constructor with optional pre-assigned time
     Section(const std::string& id, std::shared_ptr<Course> course, 
             std::shared_ptr<Teacher> teacher, std::shared_ptr<TimeSlot> timeSlot);
     
@@ -89,6 +98,9 @@ public:
     
     void setTeacher(std::shared_ptr<Teacher> teacher);
     void setTimeSlot(std::shared_ptr<TimeSlot> timeSlot);
+    
+    // Create a new section with an assigned start time
+    std::shared_ptr<Section> withStartTime(int startHour, int startMinute) const;
     
 private:
     std::string id;
@@ -127,6 +139,21 @@ public:
 private:
     std::shared_ptr<Course> course;
     std::shared_ptr<Teacher> teacher;
+};
+
+// Section-specific time slot requirement
+class SectionTimeSlotRequirement : public Requirement {
+public:
+    SectionTimeSlotRequirement(std::shared_ptr<Section> section, std::shared_ptr<TimeSlot> timeSlot);
+    bool isSatisfied(const Schedule& schedule) const override;
+    std::string getDescription() const override;
+    
+    std::shared_ptr<Section> getSection() const { return section; }
+    std::shared_ptr<TimeSlot> getTimeSlot() const { return timeSlot; }
+    
+private:
+    std::shared_ptr<Section> section;
+    std::shared_ptr<TimeSlot> timeSlot;
 };
 
 // Class representing a complete schedule

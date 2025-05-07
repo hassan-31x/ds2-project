@@ -1,12 +1,12 @@
 #ifndef UI_HPP
 #define UI_HPP
 
-// #include "..\raylib\include\raylib.h" // windows
+#include "..\raylib\include\raylib.h" // windows
 // #include "/usr/local/opt/raylib/include/raylib.h" // macos
 // #include "/opt/homebrew/include/raylib.h" // macos
 
 
-#include "../raylib/include/raylib.h"
+// #include "../raylib/include/raylib.h"
 
 #include "Scheduler.hpp"
 #include "PQTree.hpp"
@@ -214,9 +214,6 @@ private:
     TextInput* idInput;
     Dropdown* courseDropdown;
     Dropdown* teacherDropdown;
-    Dropdown* dayDropdown;
-    TextInput* startHourInput;
-    TextInput* startMinuteInput;
     TextInput* durationInput;
     
     void refreshSectionList();
@@ -236,13 +233,10 @@ public:
 private:
     std::vector<std::shared_ptr<Requirement>> displayedRequirements;
     int selectedRequirementIndex;
-    Dropdown* requirementTypeDropdown;
-    Dropdown* courseDropdown;
-    Dropdown* teacherDropdown;
+    Dropdown* sectionDropdown;
     Dropdown* dayDropdown;
     TextInput* startHourInput;
     TextInput* startMinuteInput;
-    TextInput* durationInput;
     
     void refreshRequirementList();
     void refreshDropdowns();
