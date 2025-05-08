@@ -19,6 +19,9 @@ public:
     // Add requirements/constraints
     void addRequirement(std::shared_ptr<Requirement> requirement);
     
+    // Remove a requirement
+    void removeRequirement(std::shared_ptr<Requirement> requirement);
+    
     // Generate and get schedules
     bool generateSchedule();
     std::shared_ptr<Schedule> getCurrentSchedule() const;
@@ -26,6 +29,9 @@ public:
     
     // Build a PQ tree for the current schedule (for visualization)
     PQTree buildSchedulePQTree() const;
+    
+    // Build a PQ tree for a specific schedule by index
+    PQTree buildSchedulePQTreeForIndex(int scheduleIndex) const;
     
     // Clear all data
     void clear();
@@ -62,6 +68,9 @@ private:
         
     // Helper method to create a schedule with assigned start times
     Schedule tryCreateScheduleWithTimes(const std::vector<int>& permutation);
+    
+    // Helper method to create schedule variations for sections without requirements
+    void createScheduleVariations(const Schedule& baseSchedule);
         
     // Helper to check if two schedules are equivalent (have same sections)
     bool areSchedulesEquivalent(const Schedule& a, const Schedule& b) const;

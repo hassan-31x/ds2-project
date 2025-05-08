@@ -282,9 +282,10 @@ Screen::~Screen() {
 }
 
 // UI implementation
-UI::UI()
-    : isRunning(false), currentState(ScreenState::MAIN_MENU) {
-    scheduler = std::make_shared<Scheduler>();
+UI::UI() 
+    : isRunning(true), currentState(ScreenState::MAIN_MENU), 
+      scheduler(std::make_shared<Scheduler>()), currentScheduleIndex(0) {
+    
 }
 
 UI::~UI() {
@@ -292,37 +293,42 @@ UI::~UI() {
 }
 
 void UI::initialize() {
-    // Initialize Raylib
+    // Initialize raylib
     InitWindow(screenWidth, screenHeight, windowTitle);
     SetTargetFPS(60);
     
-    // Add dummy data
+    // Add some dummy data for testing
     addDummyData();
     
-    // Create the initial screen
+    // Create initial screen
     changeScreen(ScreenState::MAIN_MENU);
-    
-    isRunning = true;
 }
 
 void UI::run() {
-    while (isRunning && !WindowShouldClose()) {
-        // Process input
-        ScreenState newState = currentScreen->processInput();
-        if (newState != currentState) {
-            changeScreen(newState);
-        }
-        
-        // Update
+    while (!WindowShouldClose() && isRunning) {
+        // Update and draw the current screen
         currentScreen->update();
         
-        // Draw
         BeginDrawing();
         ClearBackground(RAYWHITE);
+        
         currentScreen->draw();
+        
         EndDrawing();
+        
+        // Process input and potentially change screens
+        ScreenState newState = currentScreen->processInput();
+        if (newState != currentState) {
+            // Save current schedule index before changing screens
+            if (currentState == ScreenState::SCHEDULE_VIEWER || currentState == ScreenState::PQ_TREE_VIEWER) {
+                currentScheduleIndex = currentScreen->getScheduleIndex();
+            }
+            
+            changeScreen(newState);
+        }
     }
     
+    // Clean up
     CloseWindow();
 }
 
@@ -330,6 +336,11 @@ void UI::changeScreen(ScreenState newState) {
     currentState = newState;
     currentScreen = createScreen(newState);
     currentScreen->initialize();
+    
+    // Set the schedule index if moving to Schedule Viewer or PQ Tree Viewer
+    if (newState == ScreenState::SCHEDULE_VIEWER || newState == ScreenState::PQ_TREE_VIEWER) {
+        currentScreen->setScheduleIndex(currentScheduleIndex);
+    }
 }
 
 std::unique_ptr<Screen> UI::createScreen(ScreenState state) {
@@ -1214,6 +1225,12 @@ void RequirementManagementScreen::draw() {
         std::string reqText = displayedRequirements[i]->getDescription();
         
         DrawText(reqText.c_str(), listX, listY + static_cast<int>(i) * itemHeight, 20, textColor);
+        
+        // Add delete button/text
+        std::string deleteText = "Delete";
+        int deleteX = listX + 500; // Position delete button after requirement text
+        
+        DrawText(deleteText.c_str(), deleteX, listY + static_cast<int>(i) * itemHeight, 20, RED);
     }
 }
 
@@ -1236,13 +1253,25 @@ ScreenState RequirementManagementScreen::processInput() {
         int listY = 110;
         int itemHeight = 30;
         int itemWidth = 600;
+        int deleteX = listX + 500;
+        int deleteWidth = MeasureText("Delete", 20);
         
         for (size_t i = 0; i < displayedRequirements.size(); i++) {
-            if (mousePos.x >= listX && mousePos.x <= listX + itemWidth &&
+            // Check if clicked on requirement
+            if (mousePos.x >= listX && mousePos.x <= listX + itemWidth - deleteWidth &&
                 mousePos.y >= listY + static_cast<int>(i) * itemHeight && 
                 mousePos.y <= listY + static_cast<int>(i + 1) * itemHeight) {
                 
                 selectedRequirementIndex = static_cast<int>(i);
+                break;
+            }
+            
+            // Check if clicked on delete button
+            if (mousePos.x >= deleteX && mousePos.x <= deleteX + deleteWidth &&
+                mousePos.y >= listY + static_cast<int>(i) * itemHeight && 
+                mousePos.y <= listY + static_cast<int>(i + 1) * itemHeight) {
+                
+                deleteRequirement(i);
                 break;
             }
         }
@@ -1279,8 +1308,9 @@ void RequirementManagementScreen::addRequirement() {
     // Extract the section ID from the option string
     std::string sectionId = sectionOption.substr(0, sectionOption.find(" - "));
     
-    // Find the section with this ID
-    std::shared_ptr<Section> selectedSection;
+    // Find the section with this ID directly from the scheduler's sections
+    // to ensure we're using the same object reference
+    std::shared_ptr<Section> selectedSection = nullptr;
     for (const auto& section : scheduler->getSections()) {
         if (section->getId() == sectionId) {
             selectedSection = section;
@@ -1289,6 +1319,7 @@ void RequirementManagementScreen::addRequirement() {
     }
     
     if (!selectedSection) {
+        std::cout << "ERROR: Section not found!" << std::endl;
         return;
     }
     
@@ -1312,9 +1343,11 @@ void RequirementManagementScreen::addRequirement() {
             // Validate time values
             if (startHour < 0 || startHour > 23 || 
                 startMinute < 0 || startMinute > 59) {
+                std::cout << "ERROR: Invalid time values!" << std::endl;
                 return;
             }
         } catch (const std::exception&) {
+            std::cout << "ERROR: Failed to parse time values!" << std::endl;
             return;
         }
     }
@@ -1331,6 +1364,8 @@ void RequirementManagementScreen::addRequirement() {
     
     // Create SectionTimeSlotRequirement
     auto requirement = std::make_shared<SectionTimeSlotRequirement>(selectedSection, timeSlot);
+    
+    // Add to scheduler
     scheduler->addRequirement(requirement);
     
     // Clear input fields
@@ -1339,6 +1374,22 @@ void RequirementManagementScreen::addRequirement() {
     
     // Refresh requirement list
     refreshRequirementList();
+}
+
+// Add new method to delete a requirement
+void RequirementManagementScreen::deleteRequirement(size_t index) {
+    if (index < displayedRequirements.size()) {
+        // Remove the requirement from the scheduler
+        scheduler->removeRequirement(displayedRequirements[index]);
+        
+        // Reset selected index if needed
+        if (selectedRequirementIndex >= displayedRequirements.size()) {
+            selectedRequirementIndex = -1;
+        }
+        
+        // Refresh the list
+        refreshRequirementList();
+    }
 }
 
 // ScheduleViewerScreen implementation
@@ -1371,8 +1422,6 @@ void ScheduleViewerScreen::initialize() {
     prevButton->setOnClick([this]() {
         if (!displayedSchedules.empty() && currentScheduleIndex > 0) {
             currentScheduleIndex--;
-            std::cout << "Previous button clicked. Current schedule index: " 
-                      << currentScheduleIndex + 1 << "/" << displayedSchedules.size() << std::endl;
         }
     });
     components.push_back(std::move(prevButton));
@@ -1383,8 +1432,6 @@ void ScheduleViewerScreen::initialize() {
     nextButton->setOnClick([this]() {
         if (!displayedSchedules.empty() && currentScheduleIndex < static_cast<int>(displayedSchedules.size()) - 1) {
             currentScheduleIndex++;
-            std::cout << "Next button clicked. Current schedule index: " 
-                      << currentScheduleIndex + 1 << "/" << displayedSchedules.size() << std::endl;
         }
     });
     components.push_back(std::move(nextButton));
@@ -1478,7 +1525,6 @@ void ScheduleViewerScreen::drawScheduleGrid() {
     // Define grid colors
     Color gridLineColor = LIGHTGRAY;
     Color gridHeaderColor = LIGHTGRAY;
-    Color classBlockColor = LIME;
     Color textColor = BLACK;
     
     // Define time labels
@@ -1524,73 +1570,184 @@ void ScheduleViewerScreen::drawScheduleGrid() {
         }
     }
     
+    // Group sections by course for better visualization
+    std::map<std::string, std::vector<std::shared_ptr<Section>>> sectionsByCourse;
+    
     // Draw classes on the grid - Make sure we're using the current schedule index
     auto schedule = displayedSchedules[currentScheduleIndex];
     for (const auto& section : schedule->getSections()) {
-        auto timeSlot = section->getTimeSlot();
-        auto startTime = timeSlot->getStartHour() * 60 + timeSlot->getStartMinute();
-        auto duration = timeSlot->getDurationMinutes();
-        auto day = timeSlot->getDay();
-        
-        // Skip if outside our grid
-        if (timeSlot->getStartHour() < 8 || timeSlot->getStartHour() >= 17 || day > TimeSlot::FRIDAY) {
-            continue;
-        }
-        
-        // Calculate position in grid
-        int dayIndex = static_cast<int>(day);
-        int startHour = timeSlot->getStartHour();
-        int startMin = timeSlot->getStartMinute();
-        int startRowIndex = startHour - 8; // Grid starts at 8AM
-        
-        // Calculate fractional positioning for better precision
-        float startYOffset = startMin / 60.0f * rowHeight;
-        float durationHeight = (duration / 60.0f) * rowHeight;
-        
-        // Ensure minimum height
-        durationHeight = std::max(durationHeight, 30.0f);
-        
-        // Draw class block
-        int classX = gridStartX + timeColWidth + dayIndex * dayColWidth;
-        int classY = gridStartY + rowHeight + startRowIndex * rowHeight + startYOffset;
-        
-        // Draw class block
-        DrawRectangle(classX + 2, classY, dayColWidth - 4, durationHeight, classBlockColor);
-        
-        // Format time string
-        char startTimeStr[20];
-        char endTimeStr[20];
-        
-        int endHour = (startTime + duration) / 60;
-        int endMin = (startTime + duration) % 60;
-        
-        bool startPM = startHour >= 12;
-        bool endPM = endHour >= 12;
-        
-        // Convert to 12-hour format
-        int startHour12 = startHour > 12 ? startHour - 12 : (startHour == 0 ? 12 : startHour);
-        int endHour12 = endHour > 12 ? endHour - 12 : (endHour == 0 ? 12 : endHour);
-        
-        snprintf(startTimeStr, sizeof(startTimeStr), "%d:%02d%s", startHour12, startMin, startPM ? "PM" : "AM");
-        snprintf(endTimeStr, sizeof(endTimeStr), "%d:%02d%s", endHour12, endMin, endPM ? "PM" : "AM");
-        
-        // Draw text within the class block
-        int textY = classY + 5;
-        
-        // Course code and section
-        std::string courseText = section->getCourse()->getCode() + " - " + section->getId();
-        DrawText(courseText.c_str(), classX + 10, textY, 18, BLACK);
-        textY += 20;
-        
-        // Teacher name
-        std::string teacherText = section->getTeacher()->getName();
-        DrawText(teacherText.c_str(), classX + 10, textY, 16, BLACK);
-        textY += 16;
-        
-        // Time text
-        std::string timeText = std::string(startTimeStr) + " - " + std::string(endTimeStr);
-        DrawText(timeText.c_str(), classX + 10, textY, 16, BLACK);
+        sectionsByCourse[section->getCourse()->getCode()].push_back(section);
     }
+    
+    // Generate color variations for each course
+    std::map<std::string, Color> courseColors;
+    std::map<std::string, Color> courseHoverColors; // Slightly darker versions for sections with requirements
+    
+    // Define base colors for courses
+    std::vector<Color> baseColors = {
+        LIME, SKYBLUE, GOLD, PINK, PURPLE, BEIGE, MAROON
+    };
+    
+    int colorIndex = 0;
+    for (const auto& coursePair : sectionsByCourse) {
+        Color baseColor = baseColors[colorIndex % baseColors.size()];
+        courseColors[coursePair.first] = baseColor;
+        
+        // Create slightly darker hover color for sections with requirements
+        Color darkerColor = {
+            static_cast<unsigned char>(baseColor.r * 0.7f),
+            static_cast<unsigned char>(baseColor.g * 0.7f),
+            static_cast<unsigned char>(baseColor.b * 0.7f),
+            baseColor.a
+        };
+        courseHoverColors[coursePair.first] = darkerColor;
+        
+        colorIndex++;
+    }
+    
+    // Draw each section
+    for (const auto& coursePair : sectionsByCourse) {
+        const std::string& courseCode = coursePair.first;
+        const auto& courseSections = coursePair.second;
+        
+        for (const auto& section : courseSections) {
+            auto timeSlot = section->getTimeSlot();
+            auto startTime = timeSlot->getStartHour() * 60 + timeSlot->getStartMinute();
+            auto duration = timeSlot->getDurationMinutes();
+            auto day = timeSlot->getDay();
+            
+            // Skip if outside our grid
+            if (timeSlot->getStartHour() < 8 || timeSlot->getStartHour() >= 17 || day > TimeSlot::FRIDAY) {
+                continue;
+            }
+            
+            // Calculate position in grid
+            int dayIndex = static_cast<int>(day);
+            int startHour = timeSlot->getStartHour();
+            int startMin = timeSlot->getStartMinute();
+            int startRowIndex = startHour - 8; // Grid starts at 8AM
+            
+            // Calculate fractional positioning for better precision
+            float startYOffset = startMin / 60.0f * rowHeight;
+            float durationHeight = (duration / 60.0f) * rowHeight;
+            
+            // Ensure minimum height
+            durationHeight = std::max(durationHeight, 30.0f);
+            
+            // Check if this section has any requirements
+            bool hasRequirement = false;
+            for (const auto& req : scheduler->getRequirements()) {
+                auto sectionReq = std::dynamic_pointer_cast<SectionTimeSlotRequirement>(req);
+                if (sectionReq) {
+                    // Use section ID comparison rather than pointer equality
+                    if (sectionReq->getSection()->getId() == section->getId()) {
+                        hasRequirement = true;
+                        break;
+                    }
+                }
+            }
+            
+            // Draw class block with appropriate color
+            int classX = gridStartX + timeColWidth + dayIndex * dayColWidth;
+            int classY = gridStartY + rowHeight + startRowIndex * rowHeight + startYOffset;
+            
+            // Use same color for the course but add a border for sections with requirements
+            Color baseColor = courseColors[courseCode];
+            DrawRectangle(classX + 2, classY, dayColWidth - 4, durationHeight, baseColor);
+            
+            // Add a thicker or different color border for sections with requirements
+            if (hasRequirement) {
+                // Draw thicker border for sections with requirements
+                DrawRectangleLinesEx(
+                    (Rectangle){static_cast<float>(classX + 2), static_cast<float>(classY), 
+                               static_cast<float>(dayColWidth - 4), static_cast<float>(durationHeight)},
+                    3.0f, RED);
+            } else {
+                // Regular border for flexible sections
+                DrawRectangleLinesEx(
+                    (Rectangle){static_cast<float>(classX + 2), static_cast<float>(classY), 
+                               static_cast<float>(dayColWidth - 4), static_cast<float>(durationHeight)},
+                    1.0f, BLACK);
+            }
+            
+            // Convert to 12-hour format
+            int startHour12 = startHour > 12 ? startHour - 12 : (startHour == 0 ? 12 : startHour);
+            int endHour = (startTime + duration) / 60;
+            int endMin = (startTime + duration) % 60;
+            
+            bool startPM = startHour >= 12;
+            bool endPM = endHour >= 12;
+            
+            int endHour12 = endHour > 12 ? endHour - 12 : (endHour == 0 ? 12 : endHour);
+            
+            // Format time strings using stringstream
+            std::stringstream startSS, endSS;
+            startSS << startHour12 << ":" << (startMin < 10 ? "0" : "") << startMin << (startPM ? " PM" : " AM");
+            endSS << endHour12 << ":" << (endMin < 10 ? "0" : "") << endMin << (endPM ? " PM" : " AM");
+            
+            std::string startTimeString = startSS.str();
+            std::string endTimeString = endSS.str();
+            
+            // Draw text within the class block
+            int textY = classY + 5;
+            
+            // Course code and section
+            std::string courseText = section->getCourse()->getCode() + " - " + section->getId();
+            DrawText(courseText.c_str(), classX + 10, textY, 18, BLACK);
+            textY += 20;
+            
+            // Teacher name
+            std::string teacherText = section->getTeacher()->getName();
+            DrawText(teacherText.c_str(), classX + 10, textY, 16, BLACK);
+            textY += 16;
+            
+            // Time text
+            std::string timeText = startTimeString + " - " + endTimeString;
+            DrawText(timeText.c_str(), classX + 10, textY, 16, BLACK);
+        }
+    }
+    
+    // Draw legend for the schedule
+    int legendX = gridStartX;
+    int legendY = gridStartY + (numTimeSlots + 1) * rowHeight + 20;
+    DrawText("Legend:", legendX, legendY, 20, BLACK);
+    legendY += 30;
+    
+    // Draw course colors in legend
+    int legendItemWidth = 20;
+    int legendItemHeight = 20;
+    int legendSpacing = 5;
+    
+    // Draw legend for courses
+    for (const auto& coursePair : sectionsByCourse) {
+        // Course base color
+        DrawRectangle(legendX, legendY, legendItemWidth, legendItemHeight, courseColors[coursePair.first]);
+        DrawRectangleLines(legendX, legendY, legendItemWidth, legendItemHeight, BLACK);
+        
+        // Course name
+        std::string courseName = coursePair.first + " - " + 
+                                sectionsByCourse[coursePair.first][0]->getCourse()->getName();
+        DrawText(courseName.c_str(), legendX + legendItemWidth + legendSpacing, legendY, 18, BLACK);
+        
+        legendY += legendItemHeight + legendSpacing * 2;
+    }
+    
+    // Draw legend for requirement indication
+    legendY += 10;
+    
+    // First, draw a rectangle with normal border
+    DrawRectangle(legendX, legendY, legendItemWidth, legendItemHeight, LIME);
+    DrawRectangleLines(legendX, legendY, legendItemWidth, legendItemHeight, BLACK);
+    DrawText("Flexible sections", legendX + legendItemWidth + legendSpacing, legendY, 18, BLACK);
+    
+    // Then draw a rectangle with thick red border
+    legendY += legendItemHeight + legendSpacing * 2;
+    DrawRectangle(legendX, legendY, legendItemWidth, legendItemHeight, LIME);
+    DrawRectangleLinesEx(
+        (Rectangle){static_cast<float>(legendX), static_cast<float>(legendY), 
+                   static_cast<float>(legendItemWidth), static_cast<float>(legendItemHeight)},
+        3.0f, RED);
+    DrawText("Sections with requirements", legendX + legendItemWidth + legendSpacing, legendY, 18, BLACK);
 }
 
 // Remove the unused function since drawScheduleGrid now handles everything
@@ -1600,7 +1757,7 @@ void ScheduleViewerScreen::drawSelectedSchedule() {
 
 // PQTreeViewerScreen implementation
 PQTreeViewerScreen::PQTreeViewerScreen(std::shared_ptr<Scheduler> scheduler)
-    : Screen(scheduler), zoomLevel(1.0f), panOffset({0, 0}), dragging(false) {}
+    : Screen(scheduler), zoomLevel(1.0f), panOffset({0, 0}), dragging(false), currentScheduleIndex(0) {}
 
 void PQTreeViewerScreen::initialize() {
     // Create a back button
@@ -1629,6 +1786,35 @@ void PQTreeViewerScreen::initialize() {
         if (zoomLevel < 0.2f) zoomLevel = 0.2f;
     });
     components.push_back(std::move(zoomOutButton));
+
+    // Add navigation buttons for multiple schedules
+    auto prevButton = std::unique_ptr<Button>(new Button(
+        230, 20, 120, 40, "Previous", BLUE
+    ));
+    prevButton->setOnClick([this]() {
+        auto schedules = scheduler->getAllPossibleSchedules();
+        if (!schedules.empty() && currentScheduleIndex > 0) {
+            currentScheduleIndex--;
+            // Reset pan and zoom for better viewing of new tree
+            panOffset = {0, 0};
+            zoomLevel = 1.0f;
+        }
+    });
+    components.push_back(std::move(prevButton));
+    
+    auto nextButton = std::unique_ptr<Button>(new Button(
+        360, 20, 120, 40, "Next", BLUE
+    ));
+    nextButton->setOnClick([this]() {
+        auto schedules = scheduler->getAllPossibleSchedules();
+        if (!schedules.empty() && currentScheduleIndex < static_cast<int>(schedules.size()) - 1) {
+            currentScheduleIndex++;
+            // Reset pan and zoom for better viewing of new tree
+            panOffset = {0, 0};
+            zoomLevel = 1.0f;
+        }
+    });
+    components.push_back(std::move(nextButton));
 }
 
 void PQTreeViewerScreen::update() {
@@ -1676,11 +1862,15 @@ void PQTreeViewerScreen::draw() {
         component->draw();
     }
     
-    // Get the PQ tree from the scheduler
-    PQTree pqTree = scheduler->buildSchedulePQTree();
+    // Get all schedules
+    auto schedules = scheduler->getAllPossibleSchedules();
     
-    if (pqTree.getRoot()) {
-        // Draw the PQ tree
+    if (!schedules.empty()) {
+        // Display current schedule index information
+        DrawText(("Schedule #" + std::to_string(currentScheduleIndex + 1) + " of " + 
+                 std::to_string(schedules.size())).c_str(), 490, 30, 20, BLACK);
+        
+        // Draw the PQ tree for the current schedule index
         drawPQTree();
     } else {
         // Draw placeholder text
@@ -1688,7 +1878,7 @@ void PQTreeViewerScreen::draw() {
     }
     
     // Draw zoom level
-    DrawText(("Zoom: " + std::to_string(zoomLevel)).c_str(), 230, 30, 20, BLACK);
+    DrawText(("Zoom: " + std::to_string(zoomLevel)).c_str(), 490, 70, 20, BLACK);
 }
 
 ScreenState PQTreeViewerScreen::processInput() {
@@ -1699,14 +1889,23 @@ ScreenState PQTreeViewerScreen::processInput() {
             if (i == 0) {
                 return ScreenState::SCHEDULE_VIEWER;
             }
+            // Other button clicks are handled in their onClick callbacks
         }
     }
     return ScreenState::PQ_TREE_VIEWER;
 }
 
 void PQTreeViewerScreen::drawPQTree() {
-    // Get the PQ tree from the scheduler
-    PQTree pqTree = scheduler->buildSchedulePQTree();
+    auto schedules = scheduler->getAllPossibleSchedules();
+    
+    // Make sure we have a valid index
+    if (schedules.empty() || currentScheduleIndex < 0 || 
+        currentScheduleIndex >= static_cast<int>(schedules.size())) {
+        return;
+    }
+    
+    // Get the PQ tree for the current schedule index
+    PQTree pqTree = scheduler->buildSchedulePQTreeForIndex(currentScheduleIndex);
     auto root = pqTree.getRoot();
     
     if (!root) return;
@@ -1858,5 +2057,17 @@ void UI::addDummyData() {
         std::make_shared<TimeSlot>(mathSection1->getTimeSlot()->getDurationMinutes(), TimeSlot::WEDNESDAY, 13, 0));  // MATH101-A on Wednesday at 13:00
     
     scheduler->addRequirement(compSectionReq);
-    scheduler->addRequirement(mathSectionReq);
+    // scheduler->addRequirement(mathSectionReq);
+    
+    // Print initial requirements
+    std::cout << "=== INITIAL REQUIREMENTS ===" << std::endl;
+    for (const auto& req : scheduler->getRequirements()) {
+        auto sectionReq = std::dynamic_pointer_cast<SectionTimeSlotRequirement>(req);
+        if (sectionReq) {
+            std::cout << "Requirement: " << req->getDescription() << std::endl;
+            std::cout << "  Section ID: " << sectionReq->getSection()->getId() << std::endl;
+            std::cout << "  Section address: " << sectionReq->getSection().get() << std::endl;
+        }
+    }
+    std::cout << "==========================" << std::endl;
 } 

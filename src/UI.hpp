@@ -112,6 +112,10 @@ public:
     virtual void draw() = 0;
     virtual ScreenState processInput() = 0;
     
+    // Methods to get/set the current schedule index (for sharing between screens)
+    virtual void setScheduleIndex(int index) {}
+    virtual int getScheduleIndex() const { return 0; }
+    
 protected:
     std::shared_ptr<Scheduler> scheduler;
     std::vector<std::unique_ptr<UIComponent>> components;
@@ -131,6 +135,7 @@ private:
     ScreenState currentState;
     std::shared_ptr<Scheduler> scheduler;
     std::unique_ptr<Screen> currentScreen;
+    int currentScheduleIndex; // Store the current schedule index across screens
     
     // Window properties
     const int screenWidth = 1280;
@@ -241,6 +246,7 @@ private:
     void refreshRequirementList();
     void refreshDropdowns();
     void addRequirement();
+    void deleteRequirement(size_t index);
 };
 
 class ScheduleViewerScreen : public Screen {
@@ -251,6 +257,10 @@ public:
     void update() override;
     void draw() override;
     ScreenState processInput() override;
+    
+    // Implement the methods from the Screen base class
+    void setScheduleIndex(int index) override { currentScheduleIndex = index; }
+    int getScheduleIndex() const override { return currentScheduleIndex; }
     
 private:
     std::vector<std::shared_ptr<Schedule>> displayedSchedules;
@@ -270,11 +280,16 @@ public:
     void draw() override;
     ScreenState processInput() override;
     
+    // Implement the methods from the Screen base class
+    void setScheduleIndex(int index) override { currentScheduleIndex = index; }
+    int getScheduleIndex() const override { return currentScheduleIndex; }
+    
 private:
     float zoomLevel;
     Vector2 panOffset;
     bool dragging;
     Vector2 lastMousePos;
+    int currentScheduleIndex; // New member to track current schedule
     
     void drawPQTree();
     void drawNode(std::shared_ptr<PQNode> node, Vector2 position, float scale);

@@ -335,14 +335,12 @@ std::vector<std::shared_ptr<Section>> Schedule::getSectionsForCourse(const std::
 bool Schedule::hasConflicts() const {
     for (size_t i = 0; i < sections.size(); ++i) {
         for (size_t j = i + 1; j < sections.size(); ++j) {
-            // Check if two sections with the same teacher are assigned to the same time
-            if (sections[i]->getTeacher()->getId() == sections[j]->getTeacher()->getId()) {
-                // If both sections have assigned days and times, check for overlap
-                if (sections[i]->getTimeSlot()->hasDay() && sections[i]->getTimeSlot()->hasStartTime() &&
-                    sections[j]->getTimeSlot()->hasDay() && sections[j]->getTimeSlot()->hasStartTime()) {
-                    if (sections[i]->getTimeSlot()->overlaps(*(sections[j]->getTimeSlot()))) {
-                        return true;
-                    }
+            // Check for time conflicts between any sections
+            if (sections[i]->getTimeSlot()->hasDay() && sections[i]->getTimeSlot()->hasStartTime() &&
+                sections[j]->getTimeSlot()->hasDay() && sections[j]->getTimeSlot()->hasStartTime()) {
+                // Any overlap in time is considered a conflict, regardless of teacher or course
+                if (sections[i]->getTimeSlot()->overlaps(*(sections[j]->getTimeSlot()))) {
+                    return true;
                 }
             }
         }
